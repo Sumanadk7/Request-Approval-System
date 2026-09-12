@@ -6,11 +6,13 @@ class RequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Request
+
         fields = [
             "id",
             "user",
             "title",
             "description",
+            "rejection_message",
             "status",
             "created_at",
             "updated_at",
