@@ -3,6 +3,7 @@ from .models import Request
 from .serializers import RequestSerializer
 from accounts.permissions import IsUser, IsVerifier, IsApprover
 from rest_framework.permissions import IsAuthenticated
+from notifications.models import Notification
 
 class RequestCreateView(generics.CreateAPIView):
     queryset = Request.objects.all()
@@ -26,6 +27,10 @@ class RequestVerifyView(generics.UpdateAPIView):
             )
         serializer.save(status="VERIFIED")
 
+        Notification.objects.create(
+            receiver=self.get_object().user,
+            message=f'Your request "{self.get_object().title}" has been verified.'
+        )
 
 class RequestVerifierRejectView(generics.UpdateAPIView):
     queryset = Request.objects.all()
@@ -38,8 +43,13 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
             raise ValidationError(
                 "Only PENDING requests can be rejected by verifier."
             )
+
         serializer.save(status="REJECTED")
 
+        Notification.objects.create(
+            receiver=self.get_object().user,
+            message=f'Your request "{self.get_object().title}" was rejected by the verifier. Reason: {self.get_object().rejection_message}'
+        )
 
 class RequestApproveView(generics.UpdateAPIView):
     queryset = Request.objects.all()
@@ -52,7 +62,13 @@ class RequestApproveView(generics.UpdateAPIView):
             raise ValidationError(
                 "Only VERIFIED requests can be approved."
             )
+
         serializer.save(status="APPROVED")
+
+        Notification.objects.create(
+            receiver=self.get_object().user,
+            message=f'Your request "{self.get_object().title}" has been approved.'
+        )
 
 
 class RequestRejectView(generics.UpdateAPIView):
@@ -66,7 +82,13 @@ class RequestRejectView(generics.UpdateAPIView):
             raise ValidationError(
                 "Only VERIFIED requests can be rejected by approver."
             )
+
         serializer.save(status="REJECTED")
+
+        Notification.objects.create(
+            receiver=self.get_object().user,
+            message=f'Your request "{self.get_object().title}" was rejected by the approver. Reason: {self.get_object().rejection_message}'
+        )
 
 
 
