@@ -10,6 +10,7 @@ class RequestSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "user",
+            "request_type",
             "title",
             "description",
             "rejection_message",
