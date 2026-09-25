@@ -8,21 +8,24 @@ class RequestSerializer(serializers.ModelSerializer):
         model = Request
 
         fields = [
-            "id",
-            "user",
-            "request_type",
-            "title",
-            "description",
-            "rejection_message",
-            "status",
-            "created_at",
-            "updated_at",
+        "id",
+        "user",
+        "request_type",
+        "title",
+        "description",
+        "attachment",
+        "rejection_message",
+        "status",
+        "created_at",
+        "updated_at",
+        "action_deadline",
         ]
 
         read_only_fields = [
-            "id",
-            "user",
-            "status",
-            "created_at",
-            "updated_at",
+        "id",
+        "user",
+        "status",
+        "created_at",
+        "updated_at",
+        "action_deadline",
         ]

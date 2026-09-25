@@ -30,6 +30,12 @@ class Request(models.Model):
 
     description = models.TextField()
 
+    attachment = models.FileField(
+    upload_to="request_attachments/",
+    blank=True,
+    null=True
+    )
+
     rejection_message = models.TextField(
         blank=True,
         null=True
@@ -55,6 +61,15 @@ class Request(models.Model):
 
     updated_at = models.DateTimeField(
         auto_now=True
+    )
+
+    action_deadline = models.DateTimeField(
+    null=True,
+    blank=True
+    )
+
+    deadline_alert_sent = models.BooleanField(
+    default=False
     )
 
     def __str__(self):
@@ -98,3 +113,43 @@ class RequestVerifierAction(models.Model):
 
     def __str__(self):
         return f"{self.request.title} - {self.verifier.username} - {self.action}"
+
+
+
+
+class RequestApproverAction(models.Model):
+
+    request = models.ForeignKey(
+        Request,
+        on_delete=models.CASCADE,
+        related_name="approver_actions"
+    )
+
+    approver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="approver_actions"
+    )
+
+    action = models.CharField(
+        max_length=20,
+        choices=(
+            ("APPROVED", "Approved"),
+            ("REJECTED", "Rejected"),
+        )
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "approver"],
+                name="unique_request_approver_action"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.request.title} - {self.approver.username} - {self.action}"
