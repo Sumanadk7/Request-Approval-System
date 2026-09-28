@@ -35,6 +35,7 @@ urlpatterns = [
     path("api/departments/", include("departments.urls")),
     path("api/request-types/", include("request_types.urls")),
     path("api/workflows/", include("workflow.urls")),
+    path("api/audit/", include("audit.urls")),
 ]
 urlpatterns += static(
     settings.MEDIA_URL,

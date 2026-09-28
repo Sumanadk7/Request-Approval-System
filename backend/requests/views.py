@@ -1,26 +1,31 @@
 from rest_framework import generics
+
 from .models import (
     Request,
     RequestVerifierAction,
-    RequestApproverAction
+    RequestApproverAction,
+    RequestAssignment
 )
+
 from .serializers import RequestSerializer
 
 from accounts.permissions import (
     IsUser,
-    IsVerifier,
-    IsApprover,
     IsAssignedVerifier,
     IsAssignedApprover
 )
 
 from rest_framework.permissions import IsAuthenticated
+
 from rest_framework.exceptions import ValidationError, PermissionDenied
 
 from notifications.models import Notification
 
 from django.utils import timezone
+
 from datetime import timedelta
+
+from audit.models import AuditLog
 
 
 # =========================================================
@@ -37,9 +42,82 @@ class RequestCreateView(generics.CreateAPIView):
 
         deadline = timezone.now() + timedelta(hours=24)
 
-        serializer.save(
+        request_type = serializer.validated_data["request_type"]
+        workflow = request_type.workflow
+
+        # -----------------------------------------
+        # FIRST VERIFIER
+        # -----------------------------------------
+
+        first_verifier = workflow.assignments.filter(
+            role="VERIFIER",
+            order=1,
+            is_active=True
+        ).first()
+
+        # -----------------------------------------
+        # CREATE REQUEST
+        # -----------------------------------------
+
+        request_obj = serializer.save(
             user=self.request.user,
-            action_deadline=deadline
+            current_verifier=(
+                first_verifier.user
+                if first_verifier
+                else None
+            ),
+            current_verifier_order=1,
+            current_approver=None,
+            current_approver_order=1,
+            action_deadline=deadline,
+            deadline_alert_sent=False
+        )
+
+        # =====================================================
+        # VERIFIER ASSIGNMENT SNAPSHOT
+        # =====================================================
+
+        verifier_assignments = workflow.assignments.filter(
+            role="VERIFIER",
+            is_active=True
+        )
+
+        for assignment in verifier_assignments:
+
+            RequestAssignment.objects.create(
+                request=request_obj,
+                user=assignment.user,
+                role="VERIFIER",
+                order=assignment.order
+            )
+
+        # =====================================================
+        # APPROVER ASSIGNMENT SNAPSHOT
+        # =====================================================
+
+        approver_assignments = workflow.assignments.filter(
+            role="APPROVER",
+            is_active=True
+        )
+
+        for assignment in approver_assignments:
+
+            RequestAssignment.objects.create(
+                request=request_obj,
+                user=assignment.user,
+                role="APPROVER",
+                order=assignment.order
+            )
+
+        # =====================================================
+        # AUDIT
+        # =====================================================
+
+        AuditLog.objects.create(
+            request=request_obj,
+            user=self.request.user,
+            action="CREATED",
+            message="Request created."
         )
 
 
@@ -53,14 +131,30 @@ class RequestVerifyView(generics.UpdateAPIView):
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedVerifier]
 
+    def get_serializer(self, *args, **kwargs):
+
+        kwargs["partial"] = True
+
+        return super().get_serializer(
+            *args,
+            **kwargs
+        )
+
     def perform_update(self, serializer):
 
         request_obj = self.get_object()
 
-        # Request must be PENDING
-        if request_obj.status != "PENDING":
+        # =====================================================
+        # STATUS CHECK
+        # =====================================================
+
+        if request_obj.status not in [
+            "PENDING",
+            "DECISION_REQUIRED"
+        ]:
             raise ValidationError(
-                "Only PENDING requests can be verified."
+                "Only PENDING or DECISION_REQUIRED requests "
+                "can be verified."
             )
 
         workflow = request_obj.request_type.workflow
@@ -71,34 +165,55 @@ class RequestVerifyView(generics.UpdateAPIView):
 
         if workflow.verifier_mode == "SEQUENTIAL":
 
-            current_assignment = workflow.assignments.filter(
+            current_assignment = request_obj.assignments.filter(
                 role="VERIFIER",
                 order=request_obj.current_verifier_order,
+                user=self.request.user,
                 is_active=True
             ).first()
 
             if not current_assignment:
-                raise ValidationError(
-                    "No active verifier is assigned for this step."
-                )
 
-            if current_assignment.user != self.request.user:
                 raise PermissionDenied(
                     "You are not the assigned verifier for this step."
                 )
 
-            next_verifier = workflow.assignments.filter(
+            # -----------------------------------------
+            # FIND NEXT VERIFIER
+            # -----------------------------------------
+
+            next_verifier = request_obj.assignments.filter(
                 role="VERIFIER",
                 order__gt=request_obj.current_verifier_order,
                 is_active=True
             ).order_by("order").first()
 
-            # More verifier remaining
+            # -----------------------------------------
+            # MOVE TO NEXT VERIFIER
+            # -----------------------------------------
+
             if next_verifier:
 
                 serializer.save(
+                    status="PENDING",
+                    current_verifier=next_verifier.user,
                     current_verifier_order=next_verifier.order,
-                    action_deadline=timezone.now() + timedelta(hours=24)
+                    action_deadline=(
+                        timezone.now() +
+                        timedelta(hours=24)
+                    ),
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="VERIFIED",
+                    message=(
+                        f"Request verified by "
+                        f"{self.request.user.username}. "
+                        f"Moved to next verifier."
+                    )
                 )
 
                 Notification.objects.create(
@@ -111,13 +226,39 @@ class RequestVerifyView(generics.UpdateAPIView):
                     )
                 )
 
-            # Verification completed
+            # -----------------------------------------
+            # ALL VERIFIERS COMPLETED
+            # -----------------------------------------
+
             else:
+
+                first_approver = request_obj.assignments.filter(
+                    role="APPROVER",
+                    order=1,
+                    is_active=True
+                ).first()
 
                 serializer.save(
                     status="VERIFIED",
+                    current_verifier=None,
+                    current_approver=(
+                        first_approver.user
+                        if first_approver
+                        else None
+                    ),
                     current_approver_order=1,
-                    action_deadline=timezone.now() + timedelta(hours=24)
+                    action_deadline=(
+                        timezone.now() +
+                        timedelta(hours=24)
+                    ),
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="VERIFIED",
+                    message="Request fully verified."
                 )
 
                 Notification.objects.create(
@@ -134,54 +275,99 @@ class RequestVerifyView(generics.UpdateAPIView):
 
         elif workflow.verifier_mode == "PARALLEL":
 
-            current_assignment = workflow.assignments.filter(
+            current_assignment = request_obj.assignments.filter(
                 role="VERIFIER",
                 user=self.request.user,
                 is_active=True
             ).first()
 
             if not current_assignment:
+
                 raise PermissionDenied(
-                    "You are not an active verifier for this workflow."
+                    "You are not an assigned verifier "
+                    "for this request."
                 )
 
-            # Check duplicate action
+            # -----------------------------------------
+            # CHECK PREVIOUS ACTION
+            # -----------------------------------------
+
             already_acted = RequestVerifierAction.objects.filter(
                 request=request_obj,
                 verifier=self.request.user
             ).exists()
 
             if already_acted:
+
                 raise ValidationError(
                     "You have already acted on this request."
                 )
 
-            # Record verifier action
+            # -----------------------------------------
+            # SAVE VERIFIER ACTION
+            # -----------------------------------------
+
             RequestVerifierAction.objects.create(
                 request=request_obj,
                 verifier=self.request.user,
                 action="VERIFIED"
             )
 
-            # Total active verifiers
-            total_verifiers = workflow.assignments.filter(
+            # -----------------------------------------
+            # TOTAL VERIFIERS
+            # -----------------------------------------
+
+            total_verifiers = request_obj.assignments.filter(
                 role="VERIFIER",
                 is_active=True
             ).count()
 
-            # Total completed verifier actions
-            verified_verifiers = RequestVerifierAction.objects.filter(
-                request=request_obj,
-                action="VERIFIED"
-            ).count()
+            verified_verifiers = (
+                RequestVerifierAction.objects.filter(
+                    request=request_obj,
+                    action="VERIFIED"
+                ).count()
+            )
 
-            # All verifiers completed
+            # -----------------------------------------
+            # ALL VERIFIERS COMPLETED
+            # -----------------------------------------
+
             if verified_verifiers >= total_verifiers:
+
+                first_approver = request_obj.assignments.filter(
+                    role="APPROVER",
+                    order=1,
+                    is_active=True
+                ).first()
 
                 serializer.save(
                     status="VERIFIED",
+                    current_verifier=None,
+                    current_approver=(
+                        first_approver.user
+                        if first_approver
+                        else None
+                    ),
                     current_approver_order=1,
-                    action_deadline=timezone.now() + timedelta(hours=24)
+                    action_deadline=(
+                        timezone.now() +
+                        timedelta(hours=24)
+                    ),
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="VERIFIED",
+                    message=(
+                        f"Verifier "
+                        f"{self.request.user.username} "
+                        f"completed verification. "
+                        f"All verifiers have verified "
+                        f"the request."
+                    )
                 )
 
                 Notification.objects.create(
@@ -192,11 +378,31 @@ class RequestVerifyView(generics.UpdateAPIView):
                     )
                 )
 
-            # Verifiers still remaining
+            # -----------------------------------------
+            # VERIFIERS STILL REMAIN
+            # -----------------------------------------
+
             else:
 
                 serializer.save(
-                    action_deadline=timezone.now() + timedelta(hours=24)
+                    status="PENDING",
+                    action_deadline=(
+                        timezone.now() +
+                        timedelta(hours=24)
+                    ),
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="VERIFIED",
+                    message=(
+                        f"Verifier "
+                        f"{self.request.user.username} "
+                        f"verified the request. "
+                        f"Waiting for remaining verifiers."
+                    )
                 )
 
                 Notification.objects.create(
@@ -205,7 +411,8 @@ class RequestVerifyView(generics.UpdateAPIView):
                         f'Your request "{request_obj.title}" '
                         f'has been verified by '
                         f'{self.request.user.username}. '
-                        f'It is waiting for the remaining verifiers.'
+                        f'It is waiting for the remaining '
+                        f'verifiers.'
                     )
                 )
 
@@ -220,26 +427,138 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedVerifier]
 
+    def get_serializer(self, *args, **kwargs):
+
+        kwargs["partial"] = True
+
+        return super().get_serializer(
+            *args,
+            **kwargs
+        )
+
     def perform_update(self, serializer):
 
         request_obj = self.get_object()
 
-        if request_obj.status != "PENDING":
+        # =====================================================
+        # STATUS CHECK
+        # =====================================================
+
+        if request_obj.status not in [
+            "PENDING",
+            "DECISION_REQUIRED"
+        ]:
             raise ValidationError(
-                "Only PENDING requests can be rejected by verifier."
+                "Only PENDING or DECISION_REQUIRED requests "
+                "can be rejected by verifier."
             )
+
+        workflow = request_obj.request_type.workflow
+
+        # =====================================================
+        # REJECTION REASON CHECK
+        # =====================================================
+
+        rejection_message = self.request.data.get(
+            "rejection_message"
+        )
+
+        if not rejection_message or not rejection_message.strip():
+
+            raise ValidationError(
+                "Rejection reason is required."
+            )
+
+        # =====================================================
+        # SEQUENTIAL VERIFIER
+        # =====================================================
+
+        if workflow.verifier_mode == "SEQUENTIAL":
+
+            current_assignment = request_obj.assignments.filter(
+                role="VERIFIER",
+                order=request_obj.current_verifier_order,
+                user=self.request.user,
+                is_active=True
+            ).first()
+
+            if not current_assignment:
+
+                raise PermissionDenied(
+                    "You are not the assigned verifier for this step."
+                )
+
+        # =====================================================
+        # PARALLEL VERIFIER
+        # =====================================================
+
+        elif workflow.verifier_mode == "PARALLEL":
+
+            current_assignment = request_obj.assignments.filter(
+                role="VERIFIER",
+                user=self.request.user,
+                is_active=True
+            ).first()
+
+            if not current_assignment:
+
+                raise PermissionDenied(
+                    "You are not an assigned verifier "
+                    "for this request."
+                )
+
+            already_acted = RequestVerifierAction.objects.filter(
+                request=request_obj,
+                verifier=self.request.user
+            ).exists()
+
+            if already_acted:
+
+                raise ValidationError(
+                    "You have already acted on this request."
+                )
+
+            RequestVerifierAction.objects.create(
+                request=request_obj,
+                verifier=self.request.user,
+                action="REJECTED"
+            )
+
+        # =====================================================
+        # REJECT REQUEST
+        # =====================================================
 
         serializer.save(
             status="REJECTED",
+            rejection_message=rejection_message.strip(),
             action_deadline=None
         )
+
+        # =====================================================
+        # AUDIT
+        # =====================================================
+
+        AuditLog.objects.create(
+            request=request_obj,
+            user=self.request.user,
+            action="REJECTED",
+            message=(
+                f"Request rejected by verifier "
+                f"{self.request.user.username}. "
+                f"Reason: {rejection_message.strip()}"
+            )
+        )
+
+        # =====================================================
+        # NOTIFICATION
+        # =====================================================
 
         Notification.objects.create(
             receiver=request_obj.user,
             message=(
                 f'Your request "{request_obj.title}" '
                 f'was rejected by the verifier. '
-                f'Reason: {request_obj.rejection_message}'
+                f'Reason: {rejection_message.strip()}'
             )
         )
 
@@ -254,14 +573,30 @@ class RequestApproveView(generics.UpdateAPIView):
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedApprover]
 
+    def get_serializer(self, *args, **kwargs):
+
+        kwargs["partial"] = True
+
+        return super().get_serializer(
+            *args,
+            **kwargs
+        )
+
     def perform_update(self, serializer):
 
         request_obj = self.get_object()
 
-        # Request must be VERIFIED
-        if request_obj.status != "VERIFIED":
+        # =====================================================
+        # STATUS CHECK
+        # =====================================================
+
+        if request_obj.status not in [
+            "VERIFIED",
+            "DECISION_REQUIRED"
+        ]:
             raise ValidationError(
-                "Only VERIFIED requests can be approved."
+                "Only VERIFIED or DECISION_REQUIRED requests "
+                "can be approved."
             )
 
         workflow = request_obj.request_type.workflow
@@ -272,34 +607,55 @@ class RequestApproveView(generics.UpdateAPIView):
 
         if workflow.approver_mode == "SEQUENTIAL":
 
-            current_assignment = workflow.assignments.filter(
+            current_assignment = request_obj.assignments.filter(
                 role="APPROVER",
                 order=request_obj.current_approver_order,
+                user=self.request.user,
                 is_active=True
             ).first()
 
             if not current_assignment:
-                raise ValidationError(
-                    "No active approver is assigned for this step."
-                )
 
-            if current_assignment.user != self.request.user:
                 raise PermissionDenied(
                     "You are not the assigned approver for this step."
                 )
 
-            next_approver = workflow.assignments.filter(
+            # -----------------------------------------
+            # FIND NEXT APPROVER
+            # -----------------------------------------
+
+            next_approver = request_obj.assignments.filter(
                 role="APPROVER",
                 order__gt=request_obj.current_approver_order,
                 is_active=True
             ).order_by("order").first()
 
-            # More approvers remaining
+            # -----------------------------------------
+            # MOVE TO NEXT APPROVER
+            # -----------------------------------------
+
             if next_approver:
 
                 serializer.save(
+                    status="VERIFIED",
+                    current_approver=next_approver.user,
                     current_approver_order=next_approver.order,
-                    action_deadline=timezone.now() + timedelta(hours=24)
+                    action_deadline=(
+                        timezone.now() +
+                        timedelta(hours=24)
+                    ),
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="APPROVED",
+                    message=(
+                        f"Request approved by "
+                        f"{self.request.user.username}. "
+                        f"Moved to next approver."
+                    )
                 )
 
                 Notification.objects.create(
@@ -312,12 +668,24 @@ class RequestApproveView(generics.UpdateAPIView):
                     )
                 )
 
-            # Final approval completed
+            # -----------------------------------------
+            # ALL APPROVERS COMPLETED
+            # -----------------------------------------
+
             else:
 
                 serializer.save(
                     status="APPROVED",
-                    action_deadline=None
+                    current_approver=None,
+                    action_deadline=None,
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="APPROVED",
+                    message="Request fully approved."
                 )
 
                 Notification.objects.create(
@@ -334,53 +702,84 @@ class RequestApproveView(generics.UpdateAPIView):
 
         elif workflow.approver_mode == "PARALLEL":
 
-            current_assignment = workflow.assignments.filter(
+            current_assignment = request_obj.assignments.filter(
                 role="APPROVER",
                 user=self.request.user,
                 is_active=True
             ).first()
 
             if not current_assignment:
+
                 raise PermissionDenied(
-                    "You are not an active approver for this workflow."
+                    "You are not an assigned approver "
+                    "for this request."
                 )
 
-            # Check duplicate action
+            # -----------------------------------------
+            # CHECK PREVIOUS ACTION
+            # -----------------------------------------
+
             already_acted = RequestApproverAction.objects.filter(
                 request=request_obj,
                 approver=self.request.user
             ).exists()
 
             if already_acted:
+
                 raise ValidationError(
                     "You have already acted on this request."
                 )
 
-            # Record approver action
+            # -----------------------------------------
+            # SAVE APPROVER ACTION
+            # -----------------------------------------
+
             RequestApproverAction.objects.create(
                 request=request_obj,
                 approver=self.request.user,
                 action="APPROVED"
             )
 
-            # Total active approvers
-            total_approvers = workflow.assignments.filter(
+            # -----------------------------------------
+            # TOTAL APPROVERS
+            # -----------------------------------------
+
+            total_approvers = request_obj.assignments.filter(
                 role="APPROVER",
                 is_active=True
             ).count()
 
-            # Total completed approval actions
-            approved_approvers = RequestApproverAction.objects.filter(
-                request=request_obj,
-                action="APPROVED"
-            ).count()
+            approved_approvers = (
+                RequestApproverAction.objects.filter(
+                    request=request_obj,
+                    action="APPROVED"
+                ).count()
+            )
 
-            # All approvers completed
+            # -----------------------------------------
+            # ALL APPROVERS COMPLETED
+            # -----------------------------------------
+
             if approved_approvers >= total_approvers:
 
                 serializer.save(
                     status="APPROVED",
-                    action_deadline=None
+                    current_approver=None,
+                    action_deadline=None,
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="APPROVED",
+                    message=(
+                        f"Approver "
+                        f"{self.request.user.username} "
+                        f"completed approval. "
+                        f"All approvers have approved "
+                        f"the request."
+                    )
                 )
 
                 Notification.objects.create(
@@ -391,11 +790,31 @@ class RequestApproveView(generics.UpdateAPIView):
                     )
                 )
 
-            # Approvers still remaining
+            # -----------------------------------------
+            # APPROVERS STILL REMAIN
+            # -----------------------------------------
+
             else:
 
                 serializer.save(
-                    action_deadline=timezone.now() + timedelta(hours=24)
+                    status="VERIFIED",
+                    action_deadline=(
+                        timezone.now() +
+                        timedelta(hours=24)
+                    ),
+                    deadline_alert_sent=False
+                )
+
+                AuditLog.objects.create(
+                    request=request_obj,
+                    user=self.request.user,
+                    action="APPROVED",
+                    message=(
+                        f"Approver "
+                        f"{self.request.user.username} "
+                        f"approved the request. "
+                        f"Waiting for remaining approvers."
+                    )
                 )
 
                 Notification.objects.create(
@@ -404,7 +823,8 @@ class RequestApproveView(generics.UpdateAPIView):
                         f'Your request "{request_obj.title}" '
                         f'has been approved by '
                         f'{self.request.user.username}. '
-                        f'It is waiting for the remaining approvers.'
+                        f'It is waiting for the remaining '
+                        f'approvers.'
                     )
                 )
 
@@ -419,28 +839,142 @@ class RequestRejectView(generics.UpdateAPIView):
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedApprover]
 
+    def get_serializer(self, *args, **kwargs):
+
+        kwargs["partial"] = True
+
+        return super().get_serializer(
+            *args,
+            **kwargs
+        )
+
     def perform_update(self, serializer):
 
         request_obj = self.get_object()
 
-        if request_obj.status != "VERIFIED":
+        # =====================================================
+        # STATUS CHECK
+        # =====================================================
+
+        if request_obj.status not in [
+            "VERIFIED",
+            "DECISION_REQUIRED"
+        ]:
             raise ValidationError(
-                "Only VERIFIED requests can be rejected by approver."
+                "Only VERIFIED or DECISION_REQUIRED requests "
+                "can be rejected by approver."
             )
+
+        workflow = request_obj.request_type.workflow
+
+        # =====================================================
+        # REJECTION REASON CHECK
+        # =====================================================
+
+        rejection_message = self.request.data.get(
+            "rejection_message"
+        )
+
+        if not rejection_message or not rejection_message.strip():
+
+            raise ValidationError(
+                "Rejection reason is required."
+            )
+
+        # =====================================================
+        # SEQUENTIAL APPROVER
+        # =====================================================
+
+        if workflow.approver_mode == "SEQUENTIAL":
+
+            current_assignment = request_obj.assignments.filter(
+                role="APPROVER",
+                order=request_obj.current_approver_order,
+                user=self.request.user,
+                is_active=True
+            ).first()
+
+            if not current_assignment:
+
+                raise PermissionDenied(
+                    "You are not the assigned approver for this step."
+                )
+
+        # =====================================================
+        # PARALLEL APPROVER
+        # =====================================================
+
+        elif workflow.approver_mode == "PARALLEL":
+
+            current_assignment = request_obj.assignments.filter(
+                role="APPROVER",
+                user=self.request.user,
+                is_active=True
+            ).first()
+
+            if not current_assignment:
+
+                raise PermissionDenied(
+                    "You are not an assigned approver "
+                    "for this request."
+                )
+
+            already_acted = RequestApproverAction.objects.filter(
+                request=request_obj,
+                approver=self.request.user
+            ).exists()
+
+            if already_acted:
+
+                raise ValidationError(
+                    "You have already acted on this request."
+                )
+
+            RequestApproverAction.objects.create(
+                request=request_obj,
+                approver=self.request.user,
+                action="REJECTED"
+            )
+
+        # =====================================================
+        # REJECT REQUEST
+        # =====================================================
 
         serializer.save(
             status="REJECTED",
+            rejection_message=rejection_message.strip(),
             action_deadline=None
         )
+
+        # =====================================================
+        # AUDIT
+        # =====================================================
+
+        AuditLog.objects.create(
+            request=request_obj,
+            user=self.request.user,
+            action="REJECTED",
+            message=(
+                f"Request rejected by approver "
+                f"{self.request.user.username}. "
+                f"Reason: {rejection_message.strip()}"
+            )
+        )
+
+        # =====================================================
+        # NOTIFICATION
+        # =====================================================
 
         Notification.objects.create(
             receiver=request_obj.user,
             message=(
                 f'Your request "{request_obj.title}" '
                 f'was rejected by the approver. '
-                f'Reason: {request_obj.rejection_message}'
+                f'Reason: {rejection_message.strip()}'
             )
         )
+
+
 
 
 # =========================================================
@@ -456,31 +990,96 @@ class RequestListView(generics.ListAPIView):
 
         user = self.request.user
 
-        # Normal User
+        # =====================================================
+        # NORMAL USER
+        # =====================================================
+
         if user.role == "USER":
 
             return Request.objects.filter(
                 user=user
             ).order_by("-created_at")
 
-        # Verifier
+        # =====================================================
+        # VERIFIER
+        # =====================================================
+
         elif user.role == "VERIFIER":
 
-            return Request.objects.filter(
-                status="PENDING",
-                request_type__workflow__assignments__user=user,
-                request_type__workflow__assignments__role="VERIFIER",
-                request_type__workflow__assignments__is_active=True
+            # -----------------------------------------
+            # SEQUENTIAL VERIFIER
+            # -----------------------------------------
+
+            sequential_requests = Request.objects.filter(
+                status__in=[
+                    "PENDING",
+                    "DECISION_REQUIRED"
+                ],
+                current_verifier=user,
+                request_type__workflow__verifier_mode="SEQUENTIAL"
+            )
+
+            # -----------------------------------------
+            # PARALLEL VERIFIER
+            # -----------------------------------------
+
+            parallel_requests = Request.objects.filter(
+                status__in=[
+                    "PENDING",
+                    "DECISION_REQUIRED"
+                ],
+                request_type__workflow__verifier_mode="PARALLEL",
+                assignments__user=user,
+                assignments__role="VERIFIER",
+                assignments__is_active=True
+            ).exclude(
+                verifier_actions__verifier=user
+            )
+
+            return (
+                sequential_requests |
+                parallel_requests
             ).distinct().order_by("-created_at")
 
-        # Approver
+        # =====================================================
+        # APPROVER
+        # =====================================================
+
         elif user.role == "APPROVER":
 
-            return Request.objects.filter(
-                status="VERIFIED",
-                request_type__workflow__assignments__user=user,
-                request_type__workflow__assignments__role="APPROVER",
-                request_type__workflow__assignments__is_active=True
+            # -----------------------------------------
+            # SEQUENTIAL APPROVER
+            # -----------------------------------------
+
+            sequential_requests = Request.objects.filter(
+                status__in=[
+                    "VERIFIED",
+                    "DECISION_REQUIRED"
+                ],
+                current_approver=user,
+                request_type__workflow__approver_mode="SEQUENTIAL"
+            )
+
+            # -----------------------------------------
+            # PARALLEL APPROVER
+            # -----------------------------------------
+
+            parallel_requests = Request.objects.filter(
+                status__in=[
+                    "VERIFIED",
+                    "DECISION_REQUIRED"
+                ],
+                request_type__workflow__approver_mode="PARALLEL",
+                assignments__user=user,
+                assignments__role="APPROVER",
+                assignments__is_active=True
+            ).exclude(
+                approver_actions__approver=user
+            )
+
+            return (
+                sequential_requests |
+                parallel_requests
             ).distinct().order_by("-created_at")
 
         return Request.objects.none()

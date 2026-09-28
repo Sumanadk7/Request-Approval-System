@@ -1,10 +1,20 @@
 from rest_framework import serializers
 
-from .models import Workflow, WorkflowAssignment
+from .models import (
+    Workflow,
+    WorkflowAssignment,
+    WorkflowAssignmentHistory
+)
+
+
+# =========================================================
+# WORKFLOW SERIALIZER
+# =========================================================
 
 class WorkflowSerializer(serializers.ModelSerializer):
 
     class Meta:
+
         model = Workflow
 
         fields = [
@@ -23,9 +33,15 @@ class WorkflowSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+
+# =========================================================
+# WORKFLOW ASSIGNMENT SERIALIZER
+# =========================================================
+
 class WorkflowAssignmentSerializer(serializers.ModelSerializer):
 
     class Meta:
+
         model = WorkflowAssignment
 
         fields = [
@@ -40,5 +56,53 @@ class WorkflowAssignmentSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+            "workflow",
+            "is_active",
             "created_at",
+        ]
+
+
+# =========================================================
+# WORKFLOW ASSIGNMENT HISTORY SERIALIZER
+# =========================================================
+
+class WorkflowAssignmentHistorySerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = WorkflowAssignmentHistory
+
+        fields = [
+            "id",
+            "workflow",
+            "user",
+            "role",
+            "order",
+            "assigned_from",
+            "assigned_until",
+        ]
+
+        read_only_fields = [
+            "id",
+            "assigned_from",
+            "assigned_until",
+        ]
+
+
+# =========================================================
+# WORKFLOW ASSIGNMENT REASSIGN SERIALIZER
+# =========================================================
+
+class WorkflowAssignmentReassignSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+
+        model = WorkflowAssignment
+
+        fields = [
+            "user",
         ]

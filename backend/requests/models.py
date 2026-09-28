@@ -10,6 +10,7 @@ class Request(models.Model):
         ("VERIFIED", "Verified"),
         ("APPROVED", "Approved"),
         ("REJECTED", "Rejected"),
+        ("DECISION_REQUIRED", "Decision Required"),
     )
 
     user = models.ForeignKey(
@@ -49,6 +50,22 @@ class Request(models.Model):
 
     current_verifier_order = models.PositiveIntegerField(
         default=1
+    )
+
+    current_verifier = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    related_name="current_verifier_requests"
+    )
+
+    current_approver = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.SET_NULL,
+    null=True,
+    blank=True,
+    related_name="current_approver_requests"
     )
 
     current_approver_order = models.PositiveIntegerField(
@@ -114,6 +131,50 @@ class RequestVerifierAction(models.Model):
     def __str__(self):
         return f"{self.request.title} - {self.verifier.username} - {self.action}"
 
+
+
+class RequestAssignment(models.Model):
+
+    ROLE_CHOICES = (
+        ("VERIFIER", "Verifier"),
+        ("APPROVER", "Approver"),
+    )
+
+    request = models.ForeignKey(
+        Request,
+        on_delete=models.CASCADE,
+        related_name="assignments"
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="request_assignments"
+    )
+
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES
+    )
+
+    order = models.PositiveIntegerField(
+        default=1
+    )
+
+    is_active = models.BooleanField(
+        default=True
+    )
+
+    assigned_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    def __str__(self):
+        return (
+            f"{self.request.title} - "
+            f"{self.user} - {self.role}"
+        )
 
 
 

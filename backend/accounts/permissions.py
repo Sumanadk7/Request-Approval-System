@@ -37,7 +37,7 @@ class IsAssignedApprover(BasePermission):
         )
 
     def has_object_permission(self, request, view, obj):
-        return obj.request_type.workflow.assignments.filter(
+        return obj.assignments.filter(
             user=request.user,
             role="APPROVER",
             is_active=True
@@ -53,7 +53,7 @@ class IsAssignedVerifier(BasePermission):
         )
 
     def has_object_permission(self, request, view, obj):
-        return obj.request_type.workflow.assignments.filter(
+        return obj.assignments.filter(
             user=request.user,
             role="VERIFIER",
             is_active=True

@@ -3,7 +3,8 @@ from django.urls import path
 from .views import (
     WorkflowListCreateView,
     WorkflowDetailView,
-    WorkflowAssignmentListCreateView
+    WorkflowAssignmentListCreateView,
+    WorkflowAssignmentReassignView
 )
 
 
@@ -25,6 +26,12 @@ urlpatterns = [
         "<int:workflow_id>/assignments/",
         WorkflowAssignmentListCreateView.as_view(),
         name="workflow-assignment-list-create"
+    ),
+
+    path(
+        "assignments/<int:pk>/reassign/",
+        WorkflowAssignmentReassignView.as_view(),
+        name="workflow-assignment-reassign"
     ),
 
 ]
