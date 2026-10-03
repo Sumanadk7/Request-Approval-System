@@ -1,3 +1,4 @@
+
 from django.urls import path
 
 from .views import (
@@ -6,7 +7,9 @@ from .views import (
     RequestVerifyView,
     RequestVerifierRejectView,
     RequestApproveView,
-    RequestRejectView
+    RequestRejectView,
+    VerifierHistoryView,
+    ApproverHistoryView
 )
 
 urlpatterns = [
@@ -42,8 +45,21 @@ urlpatterns = [
     ),
 
     path(
-    "list/",
-    RequestListView.as_view(),
-    name="request-list"
+        "list/",
+        RequestListView.as_view(),
+        name="request-list"
     ),
+
+    path(
+        "verifier-history/",
+        VerifierHistoryView.as_view(),
+        name="verifier-history"
+    ),
+
+    path(
+        "approver-history/",
+        ApproverHistoryView.as_view(),
+        name="approver-history"
+    ),
+
 ]

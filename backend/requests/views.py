@@ -27,6 +27,8 @@ from datetime import timedelta
 
 from audit.models import AuditLog
 
+from audit.serializers import AuditLogSerializer
+
 
 # =========================================================
 # CREATE REQUEST
@@ -43,6 +45,7 @@ class RequestCreateView(generics.CreateAPIView):
         deadline = timezone.now() + timedelta(hours=24)
 
         request_type = serializer.validated_data["request_type"]
+
         workflow = request_type.workflow
 
         # -----------------------------------------
@@ -152,6 +155,7 @@ class RequestVerifyView(generics.UpdateAPIView):
             "PENDING",
             "DECISION_REQUIRED"
         ]:
+
             raise ValidationError(
                 "Only PENDING or DECISION_REQUIRED requests "
                 "can be verified."
@@ -448,6 +452,7 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
             "PENDING",
             "DECISION_REQUIRED"
         ]:
+
             raise ValidationError(
                 "Only PENDING or DECISION_REQUIRED requests "
                 "can be rejected by verifier."
@@ -594,6 +599,7 @@ class RequestApproveView(generics.UpdateAPIView):
             "VERIFIED",
             "DECISION_REQUIRED"
         ]:
+
             raise ValidationError(
                 "Only VERIFIED or DECISION_REQUIRED requests "
                 "can be approved."
@@ -860,6 +866,7 @@ class RequestRejectView(generics.UpdateAPIView):
             "VERIFIED",
             "DECISION_REQUIRED"
         ]:
+
             raise ValidationError(
                 "Only VERIFIED or DECISION_REQUIRED requests "
                 "can be rejected by approver."
@@ -975,8 +982,6 @@ class RequestRejectView(generics.UpdateAPIView):
         )
 
 
-
-
 # =========================================================
 # REQUEST LIST
 # =========================================================
@@ -1083,3 +1088,57 @@ class RequestListView(generics.ListAPIView):
             ).distinct().order_by("-created_at")
 
         return Request.objects.none()
+
+
+# =========================================================
+# VERIFIER HISTORY
+# =========================================================
+
+class VerifierHistoryView(generics.ListAPIView):
+
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+
+        user = self.request.user
+
+        if user.role != "VERIFIER":
+            return AuditLog.objects.none()
+
+        return AuditLog.objects.filter(
+            user=user,
+            action__in=[
+                "VERIFIED",
+                "REJECTED"
+            ]
+        ).select_related(
+            "request"
+        ).order_by("-created_at")
+
+
+# =========================================================
+# APPROVER HISTORY
+# =========================================================
+
+class ApproverHistoryView(generics.ListAPIView):
+
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+
+        user = self.request.user
+
+        if user.role != "APPROVER":
+            return AuditLog.objects.none()
+
+        return AuditLog.objects.filter(
+            user=user,
+            action__in=[
+                "APPROVED",
+                "REJECTED"
+            ]
+        ).select_related(
+            "request"
+        ).order_by("-created_at")
