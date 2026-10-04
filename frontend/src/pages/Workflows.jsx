@@ -30,7 +30,7 @@ function Workflows() {
                 requestTypeResponse,
                 userResponse,
             ] = await Promise.all([
-                api.get("/workflow/"),
+                api.get("/workflows/"),
                 api.get("/request-types/"),
                 api.get("/accounts/admin-users/"),
             ]);
@@ -64,7 +64,7 @@ function Workflows() {
         try {
             setSaving(true);
 
-            await api.post("/workflow/", {
+            await api.post("/workflows/", {
                 request_type: selectedRequestType,
                 verifier_mode: verifierMode,
                 approver_mode: approverMode,
@@ -110,7 +110,7 @@ function Workflows() {
             setSaving(true);
 
             await api.post(
-                `/workflow/${selectedWorkflow.id}/assignments/`,
+                `/workflows/${selectedWorkflow.id}/assignments/`,
                 {
                     user: selectedUser,
                     role: assignmentRole,
@@ -128,7 +128,7 @@ function Workflows() {
 
             const updatedWorkflow = (
                 await api.get(
-                    `/workflow/${selectedWorkflow.id}/`
+                    `/workflows/${selectedWorkflow.id}/`
                 )
             ).data;
 
@@ -155,7 +155,7 @@ function Workflows() {
             setError("");
 
             await api.patch(
-                `/workflow/${workflow.id}/`,
+                `/workflows/${workflow.id}/`,
                 {
                     is_active: true,
                 }
@@ -175,7 +175,7 @@ function Workflows() {
             setError("");
 
             await api.patch(
-                `/workflow/${workflow.id}/`,
+                `/workflows/${workflow.id}/`,
                 {
                     is_active: false,
                 }
