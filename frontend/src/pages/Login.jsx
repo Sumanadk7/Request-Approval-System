@@ -10,7 +10,7 @@ import AdminDashboard from "./AdminDashboard";
 import VerifierDashboard from "./VerifierDashboard";
 import ApproverDashboard from "./ApproverDashboard";
 
-function Login() {
+function Login({ onNavigate }) {
   const [loggedIn, setLoggedIn] = useState(false);
   const [userRole, setUserRole] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -141,7 +141,9 @@ function Login() {
     } catch (error) {
       console.log("Login failed:", error);
 
-      const message = "Username or password is wrong.";
+      const message =
+        error.response?.data?.detail ||
+        "Username or password is wrong.";
       setError(message);
       toast.error(message);
 
@@ -304,11 +306,24 @@ function Login() {
         </form>
 
         <div className="login-footer">
-          <span>Nepal Telecom</span>
+          <span>Don't have an account?</span>
 
           <span>•</span>
 
-          <span>Request Approval System</span>
+          <button
+            type="button"
+            onClick={() => onNavigate && onNavigate("register")}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#005baa",
+              cursor: "pointer",
+              fontWeight: 600,
+              padding: 0,
+            }}
+          >
+            Register
+          </button>
         </div>
       </div>
     </div>
