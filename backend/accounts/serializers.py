@@ -10,6 +10,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         min_length=8
     )
 
+    role = serializers.ChoiceField(
+        choices=[
+            ("USER", "User"),
+            ("VERIFIER", "Verifier"),
+            ("APPROVER", "Approver"),
+        ],
+        default="USER",
+        required=False,
+    )
+
     class Meta:
         model = User
         fields = [
@@ -17,14 +27,19 @@ class RegisterSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "password",
+            "role",
         ]
 
     def create(self, validated_data):
+        role = validated_data.pop("role", "USER")
+        if role not in ("USER", "VERIFIER", "APPROVER"):
+            role = "USER"
         user = User.objects.create_user(
             username=validated_data["username"],
             email=validated_data["email"],
             password=validated_data["password"],
             phone=validated_data.get("phone", ""),
+            role=role,
         )
         return user
 
