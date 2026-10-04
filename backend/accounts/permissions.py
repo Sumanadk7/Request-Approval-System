@@ -2,7 +2,6 @@ from rest_framework.permissions import BasePermission
 
 
 class IsUser(BasePermission):
-
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
@@ -11,7 +10,6 @@ class IsUser(BasePermission):
 
 
 class IsVerifier(BasePermission):
-
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
@@ -20,7 +18,6 @@ class IsVerifier(BasePermission):
 
 
 class IsApprover(BasePermission):
-
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
@@ -28,8 +25,15 @@ class IsApprover(BasePermission):
         )
 
 
-class IsAssignedApprover(BasePermission):
+class IsAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return (
+            request.user.is_authenticated
+            and request.user.is_staff
+        )
 
+
+class IsAssignedApprover(BasePermission):
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
@@ -42,10 +46,9 @@ class IsAssignedApprover(BasePermission):
             role="APPROVER",
             is_active=True
         ).exists()
-    
+
 
 class IsAssignedVerifier(BasePermission):
-
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
