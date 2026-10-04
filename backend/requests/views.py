@@ -1,3 +1,4 @@
+
 from rest_framework import generics
 
 from .models import (
@@ -17,7 +18,10 @@ from accounts.permissions import (
 
 from rest_framework.permissions import IsAuthenticated
 
-from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.exceptions import (
+    ValidationError,
+    PermissionDenied
+)
 
 from notifications.models import Notification
 
@@ -35,17 +39,14 @@ from audit.serializers import AuditLogSerializer
 # =========================================================
 
 class RequestCreateView(generics.CreateAPIView):
-
     queryset = Request.objects.all()
     serializer_class = RequestSerializer
     permission_classes = [IsUser]
 
     def perform_create(self, serializer):
-
         deadline = timezone.now() + timedelta(hours=24)
 
         request_type = serializer.validated_data["request_type"]
-
         workflow = request_type.workflow
 
         # -----------------------------------------
@@ -86,7 +87,6 @@ class RequestCreateView(generics.CreateAPIView):
         )
 
         for assignment in verifier_assignments:
-
             RequestAssignment.objects.create(
                 request=request_obj,
                 user=assignment.user,
@@ -104,7 +104,6 @@ class RequestCreateView(generics.CreateAPIView):
         )
 
         for assignment in approver_assignments:
-
             RequestAssignment.objects.create(
                 request=request_obj,
                 user=assignment.user,
@@ -129,13 +128,11 @@ class RequestCreateView(generics.CreateAPIView):
 # =========================================================
 
 class RequestVerifyView(generics.UpdateAPIView):
-
     queryset = Request.objects.all()
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedVerifier]
 
     def get_serializer(self, *args, **kwargs):
-
         kwargs["partial"] = True
 
         return super().get_serializer(
@@ -144,7 +141,6 @@ class RequestVerifyView(generics.UpdateAPIView):
         )
 
     def perform_update(self, serializer):
-
         request_obj = self.get_object()
 
         # =====================================================
@@ -155,7 +151,6 @@ class RequestVerifyView(generics.UpdateAPIView):
             "PENDING",
             "DECISION_REQUIRED"
         ]:
-
             raise ValidationError(
                 "Only PENDING or DECISION_REQUIRED requests "
                 "can be verified."
@@ -177,7 +172,6 @@ class RequestVerifyView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not the assigned verifier for this step."
                 )
@@ -286,7 +280,6 @@ class RequestVerifyView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not an assigned verifier "
                     "for this request."
@@ -302,7 +295,6 @@ class RequestVerifyView(generics.UpdateAPIView):
             ).exists()
 
             if already_acted:
-
                 raise ValidationError(
                     "You have already acted on this request."
                 )
@@ -426,13 +418,11 @@ class RequestVerifyView(generics.UpdateAPIView):
 # =========================================================
 
 class RequestVerifierRejectView(generics.UpdateAPIView):
-
     queryset = Request.objects.all()
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedVerifier]
 
     def get_serializer(self, *args, **kwargs):
-
         kwargs["partial"] = True
 
         return super().get_serializer(
@@ -441,7 +431,6 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
         )
 
     def perform_update(self, serializer):
-
         request_obj = self.get_object()
 
         # =====================================================
@@ -452,7 +441,6 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
             "PENDING",
             "DECISION_REQUIRED"
         ]:
-
             raise ValidationError(
                 "Only PENDING or DECISION_REQUIRED requests "
                 "can be rejected by verifier."
@@ -469,7 +457,6 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
         )
 
         if not rejection_message or not rejection_message.strip():
-
             raise ValidationError(
                 "Rejection reason is required."
             )
@@ -488,7 +475,6 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not the assigned verifier for this step."
                 )
@@ -506,7 +492,6 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not an assigned verifier "
                     "for this request."
@@ -518,7 +503,6 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
             ).exists()
 
             if already_acted:
-
                 raise ValidationError(
                     "You have already acted on this request."
                 )
@@ -573,13 +557,11 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
 # =========================================================
 
 class RequestApproveView(generics.UpdateAPIView):
-
     queryset = Request.objects.all()
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedApprover]
 
     def get_serializer(self, *args, **kwargs):
-
         kwargs["partial"] = True
 
         return super().get_serializer(
@@ -588,7 +570,6 @@ class RequestApproveView(generics.UpdateAPIView):
         )
 
     def perform_update(self, serializer):
-
         request_obj = self.get_object()
 
         # =====================================================
@@ -599,7 +580,6 @@ class RequestApproveView(generics.UpdateAPIView):
             "VERIFIED",
             "DECISION_REQUIRED"
         ]:
-
             raise ValidationError(
                 "Only VERIFIED or DECISION_REQUIRED requests "
                 "can be approved."
@@ -621,7 +601,6 @@ class RequestApproveView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not the assigned approver for this step."
                 )
@@ -715,7 +694,6 @@ class RequestApproveView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not an assigned approver "
                     "for this request."
@@ -731,7 +709,6 @@ class RequestApproveView(generics.UpdateAPIView):
             ).exists()
 
             if already_acted:
-
                 raise ValidationError(
                     "You have already acted on this request."
                 )
@@ -840,13 +817,11 @@ class RequestApproveView(generics.UpdateAPIView):
 # =========================================================
 
 class RequestRejectView(generics.UpdateAPIView):
-
     queryset = Request.objects.all()
     serializer_class = RequestSerializer
     permission_classes = [IsAssignedApprover]
 
     def get_serializer(self, *args, **kwargs):
-
         kwargs["partial"] = True
 
         return super().get_serializer(
@@ -855,7 +830,6 @@ class RequestRejectView(generics.UpdateAPIView):
         )
 
     def perform_update(self, serializer):
-
         request_obj = self.get_object()
 
         # =====================================================
@@ -866,7 +840,6 @@ class RequestRejectView(generics.UpdateAPIView):
             "VERIFIED",
             "DECISION_REQUIRED"
         ]:
-
             raise ValidationError(
                 "Only VERIFIED or DECISION_REQUIRED requests "
                 "can be rejected by approver."
@@ -883,7 +856,6 @@ class RequestRejectView(generics.UpdateAPIView):
         )
 
         if not rejection_message or not rejection_message.strip():
-
             raise ValidationError(
                 "Rejection reason is required."
             )
@@ -902,7 +874,6 @@ class RequestRejectView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not the assigned approver for this step."
                 )
@@ -920,7 +891,6 @@ class RequestRejectView(generics.UpdateAPIView):
             ).first()
 
             if not current_assignment:
-
                 raise PermissionDenied(
                     "You are not an assigned approver "
                     "for this request."
@@ -932,7 +902,6 @@ class RequestRejectView(generics.UpdateAPIView):
             ).exists()
 
             if already_acted:
-
                 raise ValidationError(
                     "You have already acted on this request."
                 )
@@ -987,20 +956,26 @@ class RequestRejectView(generics.UpdateAPIView):
 # =========================================================
 
 class RequestListView(generics.ListAPIView):
-
     serializer_class = RequestSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-
         user = self.request.user
+
+        # =====================================================
+        # ADMIN
+        # =====================================================
+
+        if user.is_staff:
+            return Request.objects.all().order_by(
+                "-created_at"
+            )
 
         # =====================================================
         # NORMAL USER
         # =====================================================
 
         if user.role == "USER":
-
             return Request.objects.filter(
                 user=user
             ).order_by("-created_at")
@@ -1095,12 +1070,10 @@ class RequestListView(generics.ListAPIView):
 # =========================================================
 
 class VerifierHistoryView(generics.ListAPIView):
-
     serializer_class = AuditLogSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-
         user = self.request.user
 
         if user.role != "VERIFIER":
@@ -1122,12 +1095,10 @@ class VerifierHistoryView(generics.ListAPIView):
 # =========================================================
 
 class ApproverHistoryView(generics.ListAPIView):
-
     serializer_class = AuditLogSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-
         user = self.request.user
 
         if user.role != "APPROVER":
