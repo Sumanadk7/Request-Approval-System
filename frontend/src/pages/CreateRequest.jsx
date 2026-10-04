@@ -1,8 +1,5 @@
 import { useEffect, useState } from "react";
 
-import Navbar from "../components/Navbar";
-import Sidebar from "../components/Sidebar";
-
 import api from "../services/api";
 
 function CreateRequest() {
@@ -21,7 +18,6 @@ function CreateRequest() {
     const fetchRequestTypes = async () => {
       try {
         const response = await api.get("/request-types/");
-
         setRequestTypes(response.data);
       } catch (error) {
         console.log("Failed to fetch request types:", error);
@@ -41,7 +37,6 @@ function CreateRequest() {
 
     if (!title || !description || !requestType) {
       setError("Please fill all required fields.");
-
       return;
     }
 
@@ -78,125 +73,117 @@ function CreateRequest() {
   };
 
   return (
-    <div>
-      <Navbar />
+    <>
+      <div className="page-title">
+        <h1>Create Request</h1>
 
-      <div className="dashboard-content">
-        <Sidebar role="USER" isAdmin={false} />
+        <p>Submit a new request for approval.</p>
+      </div>
 
-        <main>
-          <div className="page-title">
-            <h1>Create Request</h1>
+      <div className="section">
+        <div className="section-header">
+          <h2>Request Information</h2>
+        </div>
 
-            <p>Submit a new request for approval.</p>
-          </div>
+        {message && (
+          <p
+            style={{
+              color: "#15803d",
+              marginBottom: "15px",
+            }}
+          >
+            {message}
+          </p>
+        )}
 
-          <div className="section">
-            <div className="section-header">
-              <h2>Request Information</h2>
+        {error && (
+          <p
+            style={{
+              color: "#dc2626",
+              marginBottom: "15px",
+            }}
+          >
+            {error}
+          </p>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Request Type</label>
+
+              <select
+                value={requestType}
+                onChange={(e) => setRequestType(e.target.value)}
+              >
+                <option value="">Select Request Type</option>
+
+                {requestTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {message && (
-              <p
-                style={{
-                  color: "#15803d",
-                  marginBottom: "15px",
-                }}
-              >
-                {message}
-              </p>
-            )}
+            <div className="form-group">
+              <label>Title</label>
 
-            {error && (
-              <p
-                style={{
-                  color: "#dc2626",
-                  marginBottom: "15px",
-                }}
-              >
-                {error}
-              </p>
-            )}
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Enter request title"
+              />
+            </div>
 
-            <form onSubmit={handleSubmit}>
-              <div className="form-grid">
-                <div className="form-group">
-                  <label>Request Type</label>
+            <div className="form-group full">
+              <label>Description</label>
 
-                  <select
-                    value={requestType}
-                    onChange={(e) => setRequestType(e.target.value)}
-                  >
-                    <option value="">Select Request Type</option>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe your request..."
+              />
+            </div>
 
-                    {requestTypes.map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {type.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <div className="form-group full">
+              <label>Attachment</label>
 
-                <div className="form-group">
-                  <label>Title</label>
-
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Enter request title"
-                  />
-                </div>
-
-                <div className="form-group full">
-                  <label>Description</label>
-
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Describe your request..."
-                  />
-                </div>
-
-                <div className="form-group full">
-                  <label>Attachment</label>
-
-                  <input
-                    type="file"
-                    onChange={(e) => setAttachment(e.target.files[0])}
-                  />
-                </div>
-              </div>
-
-              <div className="form-actions">
-                <button
-                  type="button"
-                  className="btn btn-clear"
-                  onClick={() => {
-                    setTitle("");
-                    setDescription("");
-                    setRequestType("");
-                    setAttachment(null);
-                    setMessage("");
-                    setError("");
-                  }}
-                >
-                  Clear
-                </button>
-
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={loading}
-                >
-                  {loading ? "Submitting..." : "Submit Request"}
-                </button>
-              </div>
-            </form>
+              <input
+                type="file"
+                onChange={(e) => setAttachment(e.target.files[0])}
+              />
+            </div>
           </div>
-        </main>
+
+          <div className="form-actions">
+            <button
+              type="button"
+              className="btn btn-clear"
+              onClick={() => {
+                setTitle("");
+                setDescription("");
+                setRequestType("");
+                setAttachment(null);
+                setMessage("");
+                setError("");
+              }}
+            >
+              Clear
+            </button>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading}
+            >
+              {loading ? "Submitting..." : "Submit Request"}
+            </button>
+          </div>
+        </form>
       </div>
-    </div>
+    </>
   );
 }
 

@@ -1,46 +1,39 @@
+
 import { useEffect, useState } from "react";
 
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
-
 import api from "../services/api";
 import CreateRequest from "./CreateRequest";
+import MyRequests from "./MyRequests";
+import Notifications from "./Notifications";
 
 function UserDashboard({ role, isAdmin }) {
-
-    const [currentPage, setCurrentPage] = useState("dashboard");
+    const [currentPage, setCurrentPage] =
+        useState("dashboard");
 
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-
         const fetchRequests = async () => {
-
             try {
-
                 const response = await api.get(
                     "/requests/list/"
                 );
 
                 setRequests(response.data);
-
             } catch (error) {
-
                 console.log(
                     "Failed to fetch requests:",
                     error
                 );
-
             } finally {
-
                 setLoading(false);
-
             }
         };
 
         fetchRequests();
-
     }, []);
 
     const totalRequests = requests.length;
@@ -62,11 +55,9 @@ function UserDashboard({ role, isAdmin }) {
 
     return (
         <div>
-
             <Navbar />
 
             <div className="dashboard-content">
-
                 <Sidebar
                     role={role}
                     isAdmin={isAdmin}
@@ -75,28 +66,29 @@ function UserDashboard({ role, isAdmin }) {
                 />
 
                 <main>
-
                     {currentPage === "create-request" ? (
-
                         <CreateRequest />
-
+                    ) : currentPage === "my-requests" ? (
+                        <MyRequests />
+                    ) : currentPage === "notifications" ? (
+                        <Notifications />
                     ) : (
-
                         <>
                             <div className="page-title">
-
                                 <h1>User Dashboard</h1>
 
                                 <p>
-                                    Overview of your request activities.
+                                    Overview of your request
+                                    activities.
                                 </p>
-
                             </div>
 
                             <div className="dashboard-cards">
-
                                 <div className="dashboard-card">
-                                    <h3>Total Requests</h3>
+                                    <h3>
+                                        Total Requests
+                                    </h3>
+
                                     <h2>
                                         {loading
                                             ? "..."
@@ -106,6 +98,7 @@ function UserDashboard({ role, isAdmin }) {
 
                                 <div className="dashboard-card">
                                     <h3>Pending</h3>
+
                                     <h2>
                                         {loading
                                             ? "..."
@@ -115,6 +108,7 @@ function UserDashboard({ role, isAdmin }) {
 
                                 <div className="dashboard-card">
                                     <h3>Approved</h3>
+
                                     <h2>
                                         {loading
                                             ? "..."
@@ -124,55 +118,60 @@ function UserDashboard({ role, isAdmin }) {
 
                                 <div className="dashboard-card">
                                     <h3>Rejected</h3>
+
                                     <h2>
                                         {loading
                                             ? "..."
                                             : rejectedRequests}
                                     </h2>
                                 </div>
-
                             </div>
 
                             <div className="section">
-
                                 <div className="section-header">
-                                    <h2>Recent Requests</h2>
+                                    <h2>
+                                        Recent Requests
+                                    </h2>
                                 </div>
 
                                 {requests.length === 0 ? (
-
                                     <p>
-                                        You have no requests yet.
+                                        You have no
+                                        requests yet.
                                     </p>
-
                                 ) : (
-
                                     <div className="table-wrapper">
-
                                         <table>
-
                                             <thead>
-
                                                 <tr>
-                                                    <th>ID</th>
-                                                    <th>Title</th>
-                                                    <th>Status</th>
-                                                    <th>Created</th>
-                                                </tr>
+                                                    <th>
+                                                        ID
+                                                    </th>
 
+                                                    <th>
+                                                        Title
+                                                    </th>
+
+                                                    <th>
+                                                        Status
+                                                    </th>
+
+                                                    <th>
+                                                        Created
+                                                    </th>
+                                                </tr>
                                             </thead>
 
                                             <tbody>
-
                                                 {requests.map(
-                                                    (request) => (
-
+                                                    (
+                                                        request
+                                                    ) => (
                                                         <tr
                                                             key={
                                                                 request.id
                                                             }
                                                         >
-
                                                             <td>
                                                                 #
                                                                 {
@@ -201,30 +200,18 @@ function UserDashboard({ role, isAdmin }) {
                                                                     request.created_at
                                                                 ).toLocaleDateString()}
                                                             </td>
-
                                                         </tr>
-
                                                     )
                                                 )}
-
                                             </tbody>
-
                                         </table>
-
                                     </div>
-
                                 )}
-
                             </div>
-
                         </>
-
                     )}
-
                 </main>
-
             </div>
-
         </div>
     );
 }
