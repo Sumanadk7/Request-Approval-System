@@ -25,6 +25,8 @@ from rest_framework.exceptions import (
 
 from notifications.models import Notification
 
+from accounts.models import User
+
 from django.utils import timezone
 
 from datetime import timedelta
@@ -32,6 +34,30 @@ from datetime import timedelta
 from audit.models import AuditLog
 
 from audit.serializers import AuditLogSerializer
+
+
+def notify_admins(message):
+    admins = User.objects.filter(
+        is_staff=True,
+        is_active=True
+    )
+
+    for admin in admins:
+        Notification.objects.create(
+            receiver=admin,
+            message=message
+        )
+
+
+def notify_users(users, message):
+    for user in users:
+        if user is None:
+            continue
+
+        Notification.objects.create(
+            receiver=user,
+            message=message
+        )
 
 
 # =========================================================
@@ -120,6 +146,33 @@ class RequestCreateView(generics.CreateAPIView):
             user=self.request.user,
             action="CREATED",
             message="Request created."
+        )
+
+        # =====================================================
+        # NOTIFY ADMINS
+        # =====================================================
+
+        notify_admins(
+            f'New request "{request_obj.title}" '
+            f'created by {self.request.user.username}. '
+            f'Request type: {request_type.name}.'
+        )
+
+        # =====================================================
+        # NOTIFY ASSIGNED VERIFIERS
+        # =====================================================
+
+        verifier_users = User.objects.filter(
+            id__in=verifier_assignments.values_list(
+                "user_id", flat=True
+            ),
+            is_active=True
+        )
+
+        notify_users(
+            verifier_users,
+            f'New request "{request_obj.title}" '
+            f'awaits your verification.'
         )
 
 
@@ -224,6 +277,18 @@ class RequestVerifyView(generics.UpdateAPIView):
                     )
                 )
 
+                notify_users(
+                    [next_verifier.user],
+                    f'Request "{request_obj.title}" '
+                    f'is waiting for your verification.'
+                )
+
+                notify_admins(
+                    f'Request "{request_obj.title}" verified by '
+                    f'{self.request.user.username}. '
+                    f'Moved to verifier {next_verifier.user.username}.'
+                )
+
             # -----------------------------------------
             # ALL VERIFIERS COMPLETED
             # -----------------------------------------
@@ -265,6 +330,24 @@ class RequestVerifyView(generics.UpdateAPIView):
                         f'Your request "{request_obj.title}" '
                         f'has been fully verified.'
                     )
+                )
+
+                notify_users(
+                    User.objects.filter(
+                        id__in=request_obj.assignments.filter(
+                            role="APPROVER",
+                            is_active=True
+                        ).values_list("user_id", flat=True),
+                        is_active=True
+                    ),
+                    f'Request "{request_obj.title}" '
+                    f'has been fully verified and '
+                    f'awaits your approval.'
+                )
+
+                notify_admins(
+                    f'Request "{request_obj.title}" fully verified. '
+                    f'Moved to approvers.'
                 )
 
         # =====================================================
@@ -374,6 +457,24 @@ class RequestVerifyView(generics.UpdateAPIView):
                     )
                 )
 
+                notify_users(
+                    User.objects.filter(
+                        id__in=request_obj.assignments.filter(
+                            role="APPROVER",
+                            is_active=True
+                        ).values_list("user_id", flat=True),
+                        is_active=True
+                    ),
+                    f'Request "{request_obj.title}" '
+                    f'has been fully verified and '
+                    f'awaits your approval.'
+                )
+
+                notify_admins(
+                    f'Request "{request_obj.title}" fully verified. '
+                    f'Moved to approvers.'
+                )
+
             # -----------------------------------------
             # VERIFIERS STILL REMAIN
             # -----------------------------------------
@@ -410,6 +511,12 @@ class RequestVerifyView(generics.UpdateAPIView):
                         f'It is waiting for the remaining '
                         f'verifiers.'
                     )
+                )
+
+                notify_admins(
+                    f'Request "{request_obj.title}" verified by '
+                    f'{self.request.user.username}. '
+                    f'Waiting for remaining verifiers.'
                 )
 
 
@@ -551,6 +658,12 @@ class RequestVerifierRejectView(generics.UpdateAPIView):
             )
         )
 
+        notify_admins(
+            f'Request "{request_obj.title}" rejected by verifier '
+            f'{self.request.user.username}. '
+            f'Reason: {rejection_message.strip()}'
+        )
+
 
 # =========================================================
 # APPROVE REQUEST
@@ -653,6 +766,18 @@ class RequestApproveView(generics.UpdateAPIView):
                     )
                 )
 
+                notify_users(
+                    [next_approver.user],
+                    f'Request "{request_obj.title}" '
+                    f'is waiting for your approval.'
+                )
+
+                notify_admins(
+                    f'Request "{request_obj.title}" approved by '
+                    f'{self.request.user.username}. '
+                    f'Moved to approver {next_approver.user.username}.'
+                )
+
             # -----------------------------------------
             # ALL APPROVERS COMPLETED
             # -----------------------------------------
@@ -679,6 +804,10 @@ class RequestApproveView(generics.UpdateAPIView):
                         f'Your request "{request_obj.title}" '
                         f'has been fully approved.'
                     )
+                )
+
+                notify_admins(
+                    f'Request "{request_obj.title}" fully approved.'
                 )
 
         # =====================================================
@@ -773,6 +902,10 @@ class RequestApproveView(generics.UpdateAPIView):
                     )
                 )
 
+                notify_admins(
+                    f'Request "{request_obj.title}" fully approved.'
+                )
+
             # -----------------------------------------
             # APPROVERS STILL REMAIN
             # -----------------------------------------
@@ -809,6 +942,12 @@ class RequestApproveView(generics.UpdateAPIView):
                         f'It is waiting for the remaining '
                         f'approvers.'
                     )
+                )
+
+                notify_admins(
+                    f'Request "{request_obj.title}" approved by '
+                    f'{self.request.user.username}. '
+                    f'Waiting for remaining approvers.'
                 )
 
 
@@ -948,6 +1087,12 @@ class RequestRejectView(generics.UpdateAPIView):
                 f'was rejected by the approver. '
                 f'Reason: {rejection_message.strip()}'
             )
+        )
+
+        notify_admins(
+            f'Request "{request_obj.title}" rejected by approver '
+            f'{self.request.user.username}. '
+            f'Reason: {rejection_message.strip()}'
         )
 
 

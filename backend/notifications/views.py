@@ -23,6 +23,8 @@ class NotificationMarkReadView(generics.UpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if self.request.user.is_staff:
+            return Notification.objects.all()
         return Notification.objects.filter(
             receiver=self.request.user
         )
