@@ -1,33 +1,46 @@
+import { useEffect, useState } from "react";
+
 function Navbar() {
-    return (
-        <nav className="navbar">
+  const [username, setUsername] = useState("User");
 
-            <div className="navbar-brand">
-                <div className="brand-logo">
-                    NT
-                </div>
+  useEffect(() => {
+    const storedUsername = localStorage.getItem("username");
 
-                <div>
-                    <h2>Request Approval System</h2>
-                    <span>Nepal Telecom</span>
-                </div>
-            </div>
+    if (storedUsername) {
+      setUsername(storedUsername);
+    }
+  }, []);
 
-            <div className="navbar-user">
+  const handleLogout = () => {
+    localStorage.removeItem("access");
+    localStorage.removeItem("refresh");
+    localStorage.removeItem("username");
+    localStorage.removeItem("role");
 
-                <div className="user-info">
-                    <strong>User</strong>
-                    <span>Online</span>
-                </div>
+    window.location.reload();
+  };
 
-                <button>
-                    Logout
-                </button>
+  return (
+    <nav className="navbar">
+      <div className="navbar-brand">
+        <div className="brand-logo">NT</div>
 
-            </div>
+        <div>
+          <h2>Request Approval System</h2>
+          <span>Nepal Telecom</span>
+        </div>
+      </div>
 
-        </nav>
-    );
+      <div className="navbar-user">
+        <div className="user-info">
+          <strong>{username}</strong>
+          <span>Online</span>
+        </div>
+
+        <button onClick={handleLogout}>Logout</button>
+      </div>
+    </nav>
+  );
 }
 
 export default Navbar;
