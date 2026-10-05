@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 
 import api from "../services/api";
+import RequestDetail from "./RequestDetail";
 
 function MyRequests() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedRequestId, setSelectedRequestId] = useState(null);
 
   const fetchRequests = async () => {
     try {
@@ -35,6 +37,19 @@ function MyRequests() {
       </span>
     );
   };
+
+  if (selectedRequestId) {
+    return (
+      <RequestDetail
+        requestId={selectedRequestId}
+        onBack={() => {
+          setSelectedRequestId(null);
+          fetchRequests();
+        }}
+        onChanged={fetchRequests}
+      />
+    );
+  }
 
   return (
     <>
@@ -76,6 +91,7 @@ function MyRequests() {
                   <th>Title</th>
                   <th>Status</th>
                   <th>Created</th>
+                  <th>Action</th>
                 </tr>
               </thead>
 
@@ -91,6 +107,16 @@ function MyRequests() {
                     <td>{renderStatus(request.status)}</td>
 
                     <td>{new Date(request.created_at).toLocaleDateString()}</td>
+
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-info"
+                        onClick={() => setSelectedRequestId(request.id)}
+                      >
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

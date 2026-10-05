@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import api from "../services/api";
 import Notifications from "./Notifications";
+import RequestDetail from "./RequestDetail";
 
 function ApproverDashboard() {
   const role = "APPROVER";
@@ -21,6 +22,7 @@ function ApproverDashboard() {
 
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectionMessage, setRejectionMessage] = useState("");
+  const [selectedRequestId, setSelectedRequestId] = useState(null);
 
   const fetchRequests = async () => {
     try {
@@ -163,6 +165,19 @@ function ApproverDashboard() {
         <main>
           {currentPage === "notifications" ? (
             <Notifications />
+          ) : selectedRequestId ? (
+            <RequestDetail
+              requestId={selectedRequestId}
+              onBack={() => {
+                setSelectedRequestId(null);
+                fetchRequests();
+                fetchHistory();
+              }}
+              onChanged={() => {
+                fetchRequests();
+                fetchHistory();
+              }}
+            />
           ) : (
             <>
               <div className="page-title">
@@ -295,7 +310,18 @@ function ApproverDashboard() {
                               <td>
                                 <button
                                   type="button"
+                                  className="btn btn-info"
+                                  onClick={() =>
+                                    setSelectedRequestId(request.id)
+                                  }
+                                >
+                                  View
+                                </button>
+
+                                <button
+                                  type="button"
                                   className="btn btn-success"
+                                  style={{ marginLeft: "8px" }}
                                   disabled={actingId === request.id}
                                   onClick={() => handleApprove(request)}
                                 >
