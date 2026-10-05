@@ -1,8 +1,10 @@
 
 import axios from "axios";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8001/api";
+
 const api = axios.create({
-    baseURL: "http://127.0.0.1:8001/api",
+    baseURL: API_URL,
 });
 
 // Attach access token to every request
@@ -46,7 +48,7 @@ api.interceptors.response.use(
                 // Use plain axios here so the refresh request
                 // does not go through this same interceptor.
                 const refreshResponse = await axios.post(
-                    "http://127.0.0.1:8001/api/token/refresh/",
+                    `${API_URL}/token/refresh/`,
                     {
                         refresh: refreshToken,
                     }
@@ -79,3 +81,5 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+export { API_URL };

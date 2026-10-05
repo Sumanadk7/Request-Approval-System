@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useState } from "react";
 
-import api from "../services/api";
+import api, { API_URL } from "../services/api";
 
-const API_BASE = "http://127.0.0.1:8001";
+const API_BASE = API_URL.replace(/\/api\/?$/, "");
 
 function RequestDetail({ requestId, onBack, onChanged }) {
   const [detail, setDetail] = useState(null);
