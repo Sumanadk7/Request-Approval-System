@@ -42,6 +42,16 @@ class Request(models.Model):
         null=True
     )
 
+    verification_message = models.TextField(
+        blank=True,
+        null=True
+    )
+
+    approval_message = models.TextField(
+        blank=True,
+        null=True
+    )
+
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,

@@ -4,10 +4,12 @@ from django.urls import path
 from .views import (
     RequestCreateView,
     RequestListView,
+    RequestDetailView,
     RequestVerifyView,
     RequestVerifierRejectView,
     RequestApproveView,
     RequestRejectView,
+    RequestReassignView,
     VerifierHistoryView,
     ApproverHistoryView
 )
@@ -48,6 +50,18 @@ urlpatterns = [
         "list/",
         RequestListView.as_view(),
         name="request-list"
+    ),
+
+    path(
+        "<int:pk>/",
+        RequestDetailView.as_view(),
+        name="request-detail"
+    ),
+
+    path(
+        "<int:pk>/reassign/",
+        RequestReassignView.as_view(),
+        name="request-reassign"
     ),
 
     path(

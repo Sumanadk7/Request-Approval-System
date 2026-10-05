@@ -1,6 +1,13 @@
 from rest_framework import serializers
 
-from .models import Request
+from audit.serializers import AuditLogSerializer
+
+from .models import (
+    Request,
+    RequestAssignment,
+    RequestVerifierAction,
+    RequestApproverAction,
+)
 
 
 class RequestSerializer(serializers.ModelSerializer):
@@ -42,6 +49,8 @@ class RequestSerializer(serializers.ModelSerializer):
             "description",
             "attachment",
             "rejection_message",
+            "verification_message",
+            "approval_message",
             "status",
             "current_verifier",
             "current_verifier_username",
@@ -59,6 +68,9 @@ class RequestSerializer(serializers.ModelSerializer):
             "user",
             "created_by",
             "status",
+            "rejection_message",
+            "verification_message",
+            "approval_message",
             "current_verifier",
             "current_verifier_username",
             "current_verifier_order",
@@ -69,4 +81,96 @@ class RequestSerializer(serializers.ModelSerializer):
             "updated_at",
             "action_deadline",
             "request_type_name",
+        ]
+
+
+class RequestAssignmentSerializer(serializers.ModelSerializer):
+
+    username = serializers.SerializerMethodField()
+
+    def get_username(self, obj):
+        if obj.user_id and obj.user:
+            return obj.user.username
+        return None
+
+    class Meta:
+        model = RequestAssignment
+        fields = [
+            "id",
+            "user",
+            "username",
+            "role",
+            "order",
+            "is_active",
+            "assigned_at",
+        ]
+        read_only_fields = fields
+
+
+class RequestVerifierActionSerializer(serializers.ModelSerializer):
+
+    username = serializers.CharField(
+        source="verifier.username",
+        read_only=True
+    )
+
+    class Meta:
+        model = RequestVerifierAction
+        fields = [
+            "id",
+            "verifier",
+            "username",
+            "action",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class RequestApproverActionSerializer(serializers.ModelSerializer):
+
+    username = serializers.CharField(
+        source="approver.username",
+        read_only=True
+    )
+
+    class Meta:
+        model = RequestApproverAction
+        fields = [
+            "id",
+            "approver",
+            "username",
+            "action",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class RequestDetailSerializer(RequestSerializer):
+
+    assignments = RequestAssignmentSerializer(
+        many=True,
+        read_only=True
+    )
+
+    verifier_actions = RequestVerifierActionSerializer(
+        many=True,
+        read_only=True
+    )
+
+    approver_actions = RequestApproverActionSerializer(
+        many=True,
+        read_only=True
+    )
+
+    audit_logs = AuditLogSerializer(
+        many=True,
+        read_only=True
+    )
+
+    class Meta(RequestSerializer.Meta):
+        fields = RequestSerializer.Meta.fields + [
+            "assignments",
+            "verifier_actions",
+            "approver_actions",
+            "audit_logs",
         ]
