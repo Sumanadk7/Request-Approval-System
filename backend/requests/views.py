@@ -1,6 +1,10 @@
 
 from rest_framework import generics
 
+from rest_framework.response import Response
+
+from rest_framework.views import APIView
+
 from .models import (
     Request,
     RequestVerifierAction,
@@ -8,7 +12,10 @@ from .models import (
     RequestAssignment
 )
 
-from .serializers import RequestSerializer
+from .serializers import (
+    RequestSerializer,
+    RequestDetailSerializer,
+)
 
 from accounts.permissions import (
     IsUser,
@@ -58,6 +65,24 @@ def notify_users(users, message):
             receiver=user,
             message=message
         )
+
+
+class CanViewRequestDetail(IsAuthenticated):
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+
+        if user.is_staff:
+            return True
+
+        if obj.user_id == user.id:
+            return True
+
+        return RequestAssignment.objects.filter(
+            request=obj,
+            user=user,
+            is_active=True
+        ).exists()
 
 
 # =========================================================
@@ -209,6 +234,14 @@ class RequestVerifyView(generics.UpdateAPIView):
                 "can be verified."
             )
 
+        verification_message = (
+            self.request.data.get("verification_message") or ""
+        ).strip() or None
+
+        stored_verification_message = (
+            verification_message or request_obj.verification_message
+        )
+
         workflow = request_obj.request_type.workflow
 
         # =====================================================
@@ -249,6 +282,7 @@ class RequestVerifyView(generics.UpdateAPIView):
                     status="PENDING",
                     current_verifier=next_verifier.user,
                     current_verifier_order=next_verifier.order,
+                    verification_message=stored_verification_message,
                     action_deadline=(
                         timezone.now() +
                         timedelta(hours=24)
@@ -264,6 +298,11 @@ class RequestVerifyView(generics.UpdateAPIView):
                         f"Request verified by "
                         f"{self.request.user.username}. "
                         f"Moved to next verifier."
+                        + (
+                            f" Message: {verification_message}"
+                            if verification_message
+                            else ""
+                        )
                     )
                 )
 
@@ -274,6 +313,11 @@ class RequestVerifyView(generics.UpdateAPIView):
                         f'has been verified by verifier '
                         f'{current_assignment.user.username}. '
                         f'It is now waiting for the next verifier.'
+                        + (
+                            f' Verifier message: {verification_message}'
+                            if verification_message
+                            else ''
+                        )
                     )
                 )
 
@@ -310,6 +354,7 @@ class RequestVerifyView(generics.UpdateAPIView):
                         else None
                     ),
                     current_approver_order=1,
+                    verification_message=stored_verification_message,
                     action_deadline=(
                         timezone.now() +
                         timedelta(hours=24)
@@ -322,6 +367,11 @@ class RequestVerifyView(generics.UpdateAPIView):
                     user=self.request.user,
                     action="VERIFIED",
                     message="Request fully verified."
+                    + (
+                        f" Message: {verification_message}"
+                        if verification_message
+                        else ""
+                    )
                 )
 
                 Notification.objects.create(
@@ -329,6 +379,11 @@ class RequestVerifyView(generics.UpdateAPIView):
                     message=(
                         f'Your request "{request_obj.title}" '
                         f'has been fully verified.'
+                        + (
+                            f' Verifier message: {verification_message}'
+                            if verification_message
+                            else ''
+                        )
                     )
                 )
 
@@ -429,6 +484,7 @@ class RequestVerifyView(generics.UpdateAPIView):
                         else None
                     ),
                     current_approver_order=1,
+                    verification_message=stored_verification_message,
                     action_deadline=(
                         timezone.now() +
                         timedelta(hours=24)
@@ -446,6 +502,11 @@ class RequestVerifyView(generics.UpdateAPIView):
                         f"completed verification. "
                         f"All verifiers have verified "
                         f"the request."
+                        + (
+                            f" Message: {verification_message}"
+                            if verification_message
+                            else ""
+                        )
                     )
                 )
 
@@ -454,6 +515,11 @@ class RequestVerifyView(generics.UpdateAPIView):
                     message=(
                         f'Your request "{request_obj.title}" '
                         f'has been fully verified.'
+                        + (
+                            f' Verifier message: {verification_message}'
+                            if verification_message
+                            else ''
+                        )
                     )
                 )
 
@@ -483,6 +549,7 @@ class RequestVerifyView(generics.UpdateAPIView):
 
                 serializer.save(
                     status="PENDING",
+                    verification_message=stored_verification_message,
                     action_deadline=(
                         timezone.now() +
                         timedelta(hours=24)
@@ -499,6 +566,11 @@ class RequestVerifyView(generics.UpdateAPIView):
                         f"{self.request.user.username} "
                         f"verified the request. "
                         f"Waiting for remaining verifiers."
+                        + (
+                            f" Message: {verification_message}"
+                            if verification_message
+                            else ""
+                        )
                     )
                 )
 
@@ -698,6 +770,14 @@ class RequestApproveView(generics.UpdateAPIView):
                 "can be approved."
             )
 
+        approval_message = (
+            self.request.data.get("approval_message") or ""
+        ).strip() or None
+
+        stored_approval_message = (
+            approval_message or request_obj.approval_message
+        )
+
         workflow = request_obj.request_type.workflow
 
         # =====================================================
@@ -738,6 +818,7 @@ class RequestApproveView(generics.UpdateAPIView):
                     status="VERIFIED",
                     current_approver=next_approver.user,
                     current_approver_order=next_approver.order,
+                    approval_message=stored_approval_message,
                     action_deadline=(
                         timezone.now() +
                         timedelta(hours=24)
@@ -753,6 +834,11 @@ class RequestApproveView(generics.UpdateAPIView):
                         f"Request approved by "
                         f"{self.request.user.username}. "
                         f"Moved to next approver."
+                        + (
+                            f" Message: {approval_message}"
+                            if approval_message
+                            else ""
+                        )
                     )
                 )
 
@@ -763,6 +849,11 @@ class RequestApproveView(generics.UpdateAPIView):
                         f'has been approved by approver '
                         f'{current_assignment.user.username}. '
                         f'It is now waiting for the next approver.'
+                        + (
+                            f' Approver message: {approval_message}'
+                            if approval_message
+                            else ''
+                        )
                     )
                 )
 
@@ -788,6 +879,7 @@ class RequestApproveView(generics.UpdateAPIView):
                     status="APPROVED",
                     current_approver=None,
                     action_deadline=None,
+                    approval_message=stored_approval_message,
                     deadline_alert_sent=False
                 )
 
@@ -796,6 +888,11 @@ class RequestApproveView(generics.UpdateAPIView):
                     user=self.request.user,
                     action="APPROVED",
                     message="Request fully approved."
+                    + (
+                        f" Message: {approval_message}"
+                        if approval_message
+                        else ""
+                    )
                 )
 
                 Notification.objects.create(
@@ -803,6 +900,11 @@ class RequestApproveView(generics.UpdateAPIView):
                     message=(
                         f'Your request "{request_obj.title}" '
                         f'has been fully approved.'
+                        + (
+                            f' Approver message: {approval_message}'
+                            if approval_message
+                            else ''
+                        )
                     )
                 )
 
@@ -878,6 +980,7 @@ class RequestApproveView(generics.UpdateAPIView):
                     status="APPROVED",
                     current_approver=None,
                     action_deadline=None,
+                    approval_message=stored_approval_message,
                     deadline_alert_sent=False
                 )
 
@@ -891,6 +994,11 @@ class RequestApproveView(generics.UpdateAPIView):
                         f"completed approval. "
                         f"All approvers have approved "
                         f"the request."
+                        + (
+                            f" Message: {approval_message}"
+                            if approval_message
+                            else ""
+                        )
                     )
                 )
 
@@ -899,6 +1007,11 @@ class RequestApproveView(generics.UpdateAPIView):
                     message=(
                         f'Your request "{request_obj.title}" '
                         f'has been fully approved.'
+                        + (
+                            f' Approver message: {approval_message}'
+                            if approval_message
+                            else ''
+                        )
                     )
                 )
 
@@ -914,6 +1027,7 @@ class RequestApproveView(generics.UpdateAPIView):
 
                 serializer.save(
                     status="VERIFIED",
+                    approval_message=stored_approval_message,
                     action_deadline=(
                         timezone.now() +
                         timedelta(hours=24)
@@ -930,6 +1044,11 @@ class RequestApproveView(generics.UpdateAPIView):
                         f"{self.request.user.username} "
                         f"approved the request. "
                         f"Waiting for remaining approvers."
+                        + (
+                            f" Message: {approval_message}"
+                            if approval_message
+                            else ""
+                        )
                     )
                 )
 
@@ -941,6 +1060,11 @@ class RequestApproveView(generics.UpdateAPIView):
                         f'{self.request.user.username}. '
                         f'It is waiting for the remaining '
                         f'approvers.'
+                        + (
+                            f' Approver message: {approval_message}'
+                            if approval_message
+                            else ''
+                        )
                     )
                 )
 
@@ -1258,3 +1382,151 @@ class ApproverHistoryView(generics.ListAPIView):
         ).select_related(
             "request"
         ).order_by("-created_at")
+
+
+# =========================================================
+# REQUEST DETAIL
+# =========================================================
+
+class RequestDetailView(generics.RetrieveAPIView):
+    queryset = Request.objects.all()
+    serializer_class = RequestDetailSerializer
+    permission_classes = [CanViewRequestDetail]
+
+
+# =========================================================
+# REASSIGN REQUEST ASSIGNMENT (ADMIN)
+# =========================================================
+
+class RequestReassignView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        if not request.user.is_staff:
+            return Response(
+                {"detail": "Admin access required."},
+                status=403
+            )
+
+        try:
+            request_obj = Request.objects.get(id=pk)
+        except Request.DoesNotExist:
+            return Response(
+                {"detail": "Request not found."},
+                status=404
+            )
+
+        assignment_id = request.data.get("assignment")
+        new_user_id = request.data.get("user")
+
+        if not assignment_id or not new_user_id:
+            return Response(
+                {"detail": "Assignment and user are required."},
+                status=400
+            )
+
+        try:
+            assignment = RequestAssignment.objects.get(
+                id=assignment_id,
+                request=request_obj,
+                is_active=True
+            )
+        except RequestAssignment.DoesNotExist:
+            return Response(
+                {"detail": "Active assignment not found for this request."},
+                status=404
+            )
+
+        try:
+            new_user = User.objects.get(
+                id=new_user_id,
+                is_active=True
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "User does not exist or is inactive."},
+                status=404
+            )
+
+        if new_user.role != assignment.role:
+            return Response(
+                {"detail": (
+                    f"Only a {assignment.role} user can be assigned "
+                    f"to this position."
+                )},
+                status=400
+            )
+
+        if assignment.user_id == new_user.id:
+            return Response(
+                {"detail": "This user is already assigned."},
+                status=400
+            )
+
+        old_username = (
+            assignment.user.username if assignment.user else "—"
+        )
+
+        assignment.is_active = False
+        assignment.save(update_fields=["is_active"])
+
+        new_assignment = RequestAssignment.objects.create(
+            request=request_obj,
+            user=new_user,
+            role=assignment.role,
+            order=assignment.order,
+            is_active=True
+        )
+
+        if (
+            assignment.role == "VERIFIER"
+            and request_obj.current_verifier_id == assignment.user_id
+        ):
+            request_obj.current_verifier = new_user
+            request_obj.current_verifier_order = assignment.order
+            request_obj.save(
+                update_fields=[
+                    "current_verifier",
+                    "current_verifier_order",
+                ]
+            )
+        elif (
+            assignment.role == "APPROVER"
+            and request_obj.current_approver_id == assignment.user_id
+        ):
+            request_obj.current_approver = new_user
+            request_obj.current_approver_order = assignment.order
+            request_obj.save(
+                update_fields=[
+                    "current_approver",
+                    "current_approver_order",
+                ]
+            )
+
+        AuditLog.objects.create(
+            request=request_obj,
+            user=request.user,
+            action="REASSIGNED",
+            message=(
+                f"Admin reassigned {assignment.role} position "
+                f"(order {assignment.order}) from {old_username} to "
+                f"{new_user.username}."
+            )
+        )
+
+        notify_users(
+            [new_user],
+            f'You have been assigned as {assignment.role} for request '
+            f'"{request_obj.title}".'
+        )
+
+        notify_users(
+            [request_obj.user],
+            f'Request "{request_obj.title}" has a new '
+            f'{assignment.role.lower()}: {new_user.username}.'
+        )
+
+        return Response({
+            "detail": "Assignment reassigned successfully.",
+            "assignment": new_assignment.id,
+        })
