@@ -52,6 +52,11 @@ class AdminUserSerializer(serializers.ModelSerializer):
         min_length=8
     )
 
+    role = serializers.ChoiceField(
+        choices=User.ROLE_CHOICES,
+        required=False,
+    )
+
     class Meta:
         model = User
         fields = [

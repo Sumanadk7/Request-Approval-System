@@ -149,6 +149,16 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    # Scoped throttling. Only views that set `throttle_scope`
+    # (currently just the login view) are rate limited, so token
+    # refresh and normal authenticated requests are unaffected.
+    # Override with env var, e.g. LOGIN_THROTTLE_RATE=100/hour.
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.ScopedRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "login": config("LOGIN_THROTTLE_RATE", default="20/hour"),
+    },
 }
 
 
