@@ -163,6 +163,7 @@ function RequestTypes() {
 
           <button
             type="button"
+            className="btn btn-primary"
             onClick={() => {
               setShowForm(!showForm);
               setError("");
@@ -266,6 +267,7 @@ function RequestTypes() {
                     <td>
                       <button
                         type="button"
+                        className="btn btn-danger"
                         onClick={() => handleDelete(requestType)}
                       >
                         Delete

@@ -142,6 +142,7 @@ function Departments() {
 
           <button
             type="button"
+            className="btn btn-primary"
             onClick={() => {
               setShowForm(!showForm);
               setError("");
@@ -206,6 +207,7 @@ function Departments() {
                     <td>
                       <button
                         type="button"
+                        className="btn btn-danger"
                         onClick={() => handleDelete(department)}
                       >
                         Delete

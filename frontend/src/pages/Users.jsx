@@ -180,6 +180,7 @@ function Users() {
 
           <button
             type="button"
+            className="btn btn-primary"
             onClick={() => {
               setShowForm(!showForm);
               setError("");
@@ -303,6 +304,11 @@ function Users() {
                     <td>
                       <button
                         type="button"
+                        className={
+                          user.is_active
+                            ? "btn btn-danger"
+                            : "btn btn-success"
+                        }
                         onClick={() => handleToggleActive(user)}
                       >
                         {user.is_active ? "Deactivate" : "Activate"}
@@ -310,6 +316,7 @@ function Users() {
 
                       <button
                         type="button"
+                        className="btn btn-danger"
                         onClick={() => handleDelete(user)}
                         style={{
                           marginLeft: "8px",
