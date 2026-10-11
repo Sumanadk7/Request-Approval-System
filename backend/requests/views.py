@@ -1,6 +1,8 @@
 
 from rest_framework import generics
 
+from django.db import transaction
+
 from rest_framework.response import Response
 
 from rest_framework.views import APIView
@@ -94,11 +96,28 @@ class RequestCreateView(generics.CreateAPIView):
     serializer_class = RequestSerializer
     permission_classes = [IsUser]
 
+    @transaction.atomic
     def perform_create(self, serializer):
         deadline = timezone.now() + timedelta(hours=24)
 
         request_type = serializer.validated_data["request_type"]
-        workflow = request_type.workflow
+
+        if not request_type.is_active:
+            raise ValidationError(
+                "The selected request type is inactive."
+            )
+
+        workflow = getattr(request_type, "workflow", None)
+
+        if workflow is None:
+            raise ValidationError(
+                "The selected request type has no workflow configured."
+            )
+
+        if not workflow.is_active:
+            raise ValidationError(
+                "The workflow for the selected request type is inactive."
+            )
 
         # -----------------------------------------
         # FIRST VERIFIER
@@ -1414,6 +1433,12 @@ class RequestReassignView(APIView):
             return Response(
                 {"detail": "Request not found."},
                 status=404
+            )
+
+        if request_obj.status in ("APPROVED", "REJECTED"):
+            return Response(
+                {"detail": "Approved or rejected requests cannot be reassigned."},
+                status=400
             )
 
         assignment_id = request.data.get("assignment")

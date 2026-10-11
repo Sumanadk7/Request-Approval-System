@@ -199,3 +199,106 @@ class RequestFlowTests(TestCase):
             Request.objects.get(id=request_id).current_verifier,
             replacement,
         )
+
+    def test_reassign_terminal_request_rejected(self):
+        request_id = self.create_request()
+
+        auth_client(self.verifier).patch(
+            f"/api/requests/{request_id}/verifier-reject/",
+            data=json.dumps({"rejection_message": "No."}),
+            content_type="application/json",
+        )
+
+        assignment = (
+            Request.objects.get(id=request_id)
+            .assignments.filter(role="VERIFIER", is_active=True)
+            .first()
+        )
+        response = auth_client(self.admin).patch(
+            f"/api/requests/{request_id}/reassign/",
+            data=json.dumps(
+                {"assignment": assignment.id, "user": self.verifier.id}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_create_type_without_workflow_rejected(self):
+        from departments.models import Department
+        from request_types.models import RequestType
+
+        department = Department.objects.create(name="NoFlowDept")
+        bare_type = RequestType.objects.create(
+            name="NoFlowType",
+            department=department,
+        )
+
+        response = auth_client(self.owner).post(
+            "/api/requests/create/",
+            data=json.dumps(
+                {
+                    "request_type": bare_type.id,
+                    "title": "Orphan request",
+                    "description": "No workflow exists.",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            Request.objects.filter(title="Orphan request").exists()
+        )
+
+    def test_create_inactive_workflow_rejected_no_partials(self):
+        from notifications.models import Notification
+        from audit.models import AuditLog
+        from workflow.models import Workflow
+
+        workflow = Workflow.objects.get(
+            request_type_id=self.request_type_id
+        )
+        workflow.is_active = False
+        workflow.save(update_fields=["is_active"])
+
+        before_requests = Request.objects.count()
+        before_notifs = Notification.objects.count()
+        before_logs = AuditLog.objects.count()
+
+        response = auth_client(self.owner).post(
+            "/api/requests/create/",
+            data=json.dumps(
+                {
+                    "request_type": self.request_type_id,
+                    "title": "Inactive flow request",
+                    "description": "Workflow is off.",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Request.objects.count(), before_requests)
+        self.assertEqual(Notification.objects.count(), before_notifs)
+        self.assertEqual(AuditLog.objects.count(), before_logs)
+
+    def test_create_inactive_request_type_rejected(self):
+        from request_types.models import RequestType
+
+        request_type = RequestType.objects.get(id=self.request_type_id)
+        request_type.is_active = False
+        request_type.save(update_fields=["is_active"])
+
+        response = auth_client(self.owner).post(
+            "/api/requests/create/",
+            data=json.dumps(
+                {
+                    "request_type": self.request_type_id,
+                    "title": "Inactive type request",
+                    "description": "Type is off.",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(
+            Request.objects.filter(title="Inactive type request").exists()
+        )

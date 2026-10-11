@@ -2,6 +2,8 @@ import json
 
 from django.test import Client, TestCase
 
+from rest_framework.throttling import ScopedRateThrottle
+
 from .models import User
 
 
@@ -182,3 +184,120 @@ class AdminUserTests(TestCase):
         response = client.get("/api/accounts/admin-stats/")
         self.assertEqual(response.status_code, 200)
         self.assertIn("total_users", json.loads(response.content))
+
+
+class AdminRoleValidationTests(TestCase):
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="roleadmin",
+            email="roleadmin@test.com",
+            password="password123",
+            role="USER",
+            is_staff=True,
+        )
+        self.token = get_token("roleadmin", "password123")
+        self.staff = User.objects.create_user(
+            username="roleuser",
+            email="roleuser@test.com",
+            password="password123",
+            role="USER",
+        )
+
+    def test_admin_create_valid_role(self):
+        response = api_post(
+            "/api/accounts/admin-users/",
+            {
+                "username": "approverx",
+                "email": "approverx@test.com",
+                "password": "password123",
+                "role": "APPROVER",
+                "is_active": True,
+            },
+            token=self.token,
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            User.objects.get(username="approverx").role, "APPROVER"
+        )
+
+    def test_admin_create_invalid_role_rejected(self):
+        response = api_post(
+            "/api/accounts/admin-users/",
+            {
+                "username": "weirdrole",
+                "email": "weirdrole@test.com",
+                "password": "password123",
+                "role": "SUPERADMIN",
+                "is_active": True,
+            },
+            token=self.token,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(username="weirdrole").exists())
+
+    def test_admin_update_invalid_role_rejected(self):
+        client = Client(HTTP_AUTHORIZATION=f"Bearer {self.token}")
+        response = client.patch(
+            f"/api/accounts/admin-users/{self.staff.id}/",
+            data=json.dumps({"role": "ADMIN"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.role, "USER")
+
+    def test_non_admin_cannot_create_user(self):
+        user_token = get_token("roleuser", "password123")
+        # roleuser is not staff
+        response = api_post(
+            "/api/accounts/admin-users/",
+            {
+                "username": "blocked",
+                "email": "blocked@test.com",
+                "password": "password123",
+                "role": "USER",
+            },
+            token=user_token,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.filter(username="blocked").exists())
+
+
+# NOTE: DRF reads THROTTLE_RATES from a dict captured at import time,
+# so override_settings(REST_FRAMEWORK=...) cannot change the login rate
+# in tests. Patch the class attribute instead (restored afterwards).
+class LoginThrottleTests(TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._old_rates = ScopedRateThrottle.THROTTLE_RATES
+        ScopedRateThrottle.THROTTLE_RATES = {"login": "3/minute"}
+
+    @classmethod
+    def tearDownClass(cls):
+        ScopedRateThrottle.THROTTLE_RATES = cls._old_rates
+        super().tearDownClass()
+
+    def login(self, username="nobody", password="wrong", ip="10.9.9.9"):
+        return Client(REMOTE_ADDR=ip).post(
+            "/api/token/",
+            data=json.dumps({"username": username, "password": password}),
+            content_type="application/json",
+        )
+
+    def test_login_allowed_below_limit(self):
+        for _ in range(3):
+            response = self.login(ip="10.9.9.1")
+            self.assertIn(
+                response.status_code, (200, 401)
+            )
+            self.assertNotEqual(response.status_code, 429)
+
+    def test_login_throttled_above_limit(self):
+        for _ in range(3):
+            response = self.login(ip="10.9.9.2")
+            self.assertNotEqual(response.status_code, 429)
+        throttled = self.login(ip="10.9.9.2")
+        self.assertEqual(throttled.status_code, 429)
