@@ -4,12 +4,36 @@ import api, { API_URL } from "../services/api";
 
 const API_BASE = API_URL.replace(/\/api\/?$/, "");
 
+const getAttachmentUrl = (path) => {
+  if (!path) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  return `${API_BASE}${path.startsWith("/") ? "" : "/"}${path}`;
+};
+
+const getFileNameFromUrl = (url) => {
+  try {
+    const decoded = decodeURIComponent(url.split("?")[0]);
+    const parts = decoded.split("/");
+
+    return parts[parts.length - 1] || "attachment";
+  } catch {
+    return "attachment";
+  }
+};
+
 function RequestDetail({ requestId, onBack, onChanged }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [acting, setActing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const [message, setMessage] = useState("");
   const [showReject, setShowReject] = useState(false);
@@ -52,6 +76,43 @@ function RequestDetail({ requestId, onBack, onChanged }) {
         );
     }
   }, [requestId]);
+
+  const handleDownloadAttachment = async () => {
+    const url = getAttachmentUrl(detail?.attachment);
+
+    if (!url) {
+      return;
+    }
+
+    setDownloading(true);
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = getFileNameFromUrl(url);
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.log("Failed to download attachment:", err);
+
+      window.open(url, "_blank", "noopener,noreferrer");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -416,13 +477,31 @@ function RequestDetail({ requestId, onBack, onChanged }) {
           <div>
             <strong>Attachment:</strong>{" "}
             {detail.attachment ? (
-              <a
-                href={`${API_BASE}${detail.attachment}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                View / Download Document
-              </a>
+              <div className="attachment-actions">
+                <span className="attachment-name">
+                  {getFileNameFromUrl(
+                    getAttachmentUrl(detail.attachment),
+                  )}
+                </span>
+
+                <a
+                  href={getAttachmentUrl(detail.attachment)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-info"
+                >
+                  View
+                </a>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleDownloadAttachment}
+                  disabled={downloading}
+                >
+                  {downloading ? "Downloading..." : "Download"}
+                </button>
+              </div>
             ) : (
               "No attachment"
             )}
