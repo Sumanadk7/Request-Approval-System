@@ -1,8 +1,12 @@
 import json
 
+from datetime import timedelta
+
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from accounts.models import User
+from audit.models import AuditLog
 from departments.models import Department
 from notifications.models import Notification
 from request_types.models import RequestType
@@ -71,7 +75,7 @@ class RequestFlowTests(TestCase):
         )
         self.request_type_id = request_type.id
 
-    def create_request(self):
+    def create_request(self, submit=True):
         response = auth_client(self.owner).post(
             "/api/requests/create/",
             data=json.dumps(
@@ -84,7 +88,15 @@ class RequestFlowTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 201, response.content)
-        return json.loads(response.content)["id"]
+
+        request_id = json.loads(response.content)["id"]
+
+        if submit:
+            from .services import submit_draft_request
+
+            submit_draft_request(Request.objects.get(id=request_id))
+
+        return request_id
 
     def test_create_notifies_admin_and_verifier(self):
         request_id = self.create_request()
@@ -120,6 +132,13 @@ class RequestFlowTests(TestCase):
         self.assertEqual(request_obj.status, "VERIFIED")
         self.assertEqual(request_obj.verification_message, "Looks good.")
 
+        detail = auth_client(self.approver).get(
+            f"/api/requests/{request_id}/"
+        )
+        self.assertTrue(
+            json.loads(detail.content)["is_final_approver_step"]
+        )
+
         approve = auth_client(self.approver).patch(
             f"/api/requests/{request_id}/approve/",
             data=json.dumps({"approval_message": "Approved with note."}),
@@ -130,6 +149,47 @@ class RequestFlowTests(TestCase):
         request_obj.refresh_from_db()
         self.assertEqual(request_obj.status, "APPROVED")
         self.assertEqual(request_obj.approval_message, "Approved with note.")
+
+    def test_final_approver_requires_next_steps(self):
+        request_id = self.create_request()
+
+        auth_client(self.verifier).patch(
+            f"/api/requests/{request_id}/verify/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        no_message = auth_client(self.approver).patch(
+            f"/api/requests/{request_id}/approve/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(no_message.status_code, 400)
+        self.assertEqual(
+            Request.objects.get(id=request_id).status, "VERIFIED"
+        )
+
+        approved = auth_client(self.approver).patch(
+            f"/api/requests/{request_id}/approve/",
+            data=json.dumps({
+                "approval_message": "Collect the approved form from HR.",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(approved.status_code, 200, approved.content)
+
+        request_obj = Request.objects.get(id=request_id)
+        self.assertEqual(request_obj.status, "APPROVED")
+        self.assertEqual(
+            request_obj.approval_message,
+            "Collect the approved form from HR.",
+        )
+        self.assertTrue(
+            Notification.objects.filter(
+                receiver=self.owner,
+                message__contains="Collect the approved form from HR.",
+            ).exists()
+        )
 
     def test_verifier_reject_requires_reason(self):
         request_id = self.create_request()
@@ -151,6 +211,141 @@ class RequestFlowTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(no_reason.status_code, 400)
+
+    def test_approver_reject_requires_reason(self):
+        request_id = self.create_request()
+
+        auth_client(self.verifier).patch(
+            f"/api/requests/{request_id}/verify/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        no_reason = auth_client(self.approver).patch(
+            f"/api/requests/{request_id}/reject/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(no_reason.status_code, 400)
+
+        rejected = auth_client(self.approver).patch(
+            f"/api/requests/{request_id}/reject/",
+            data=json.dumps({"rejection_message": "Budget not approved."}),
+            content_type="application/json",
+        )
+        self.assertEqual(rejected.status_code, 200, rejected.content)
+        self.assertEqual(
+            Request.objects.get(id=request_id).status, "REJECTED"
+        )
+
+    def test_overdue_verification_sends_reminder(self):
+        from .services import process_overdue_requests
+
+        request_id = self.create_request()
+
+        request_obj = Request.objects.get(id=request_id)
+        request_obj.action_deadline = timezone.now() - timedelta(minutes=1)
+        request_obj.save(update_fields=["action_deadline"])
+
+        self.assertEqual(process_overdue_requests(), 1)
+
+        request_obj.refresh_from_db()
+
+        self.assertEqual(request_obj.status, "DECISION_REQUIRED")
+        self.assertTrue(request_obj.deadline_alert_sent)
+        self.assertTrue(
+            Notification.objects.filter(
+                receiver=self.verifier,
+                message__contains="REMINDER",
+            ).filter(
+                message__contains="verify it soon"
+            ).exists()
+        )
+
+        self.assertEqual(process_overdue_requests(), 0)
+        self.assertEqual(
+            Notification.objects.filter(
+                receiver=self.verifier,
+                message__contains="REMINDER",
+            ).count(),
+            1,
+        )
+
+    def test_overdue_approval_sends_reminder(self):
+        from .services import process_overdue_requests
+
+        request_id = self.create_request()
+
+        auth_client(self.verifier).patch(
+            f"/api/requests/{request_id}/verify/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        request_obj = Request.objects.get(id=request_id)
+        request_obj.action_deadline = timezone.now() - timedelta(minutes=1)
+        request_obj.save(update_fields=["action_deadline"])
+
+        self.assertEqual(process_overdue_requests(), 1)
+
+        request_obj.refresh_from_db()
+
+        self.assertEqual(request_obj.status, "DECISION_REQUIRED")
+        self.assertTrue(
+            Notification.objects.filter(
+                receiver=self.approver,
+                message__contains="REMINDER",
+            ).filter(
+                message__contains="approve it soon"
+            ).exists()
+        )
+
+    def test_scope_all_lists_verifier_completed_requests(self):
+        request_id = self.create_request()
+
+        auth_client(self.verifier).patch(
+            f"/api/requests/{request_id}/verify/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        pending_only = auth_client(self.verifier).get(
+            "/api/requests/list/"
+        )
+        self.assertNotIn(
+            request_id,
+            [item["id"] for item in json.loads(pending_only.content)],
+        )
+
+        all_requests = auth_client(self.verifier).get(
+            "/api/requests/list/?scope=all"
+        )
+        data = json.loads(all_requests.content)
+        ids = [item["id"] for item in data]
+
+        self.assertIn(request_id, ids)
+        item = next(entry for entry in data if entry["id"] == request_id)
+        self.assertEqual(item["status"], "VERIFIED")
+        self.assertEqual(item["workflow_verifier_mode"], "SEQUENTIAL")
+        self.assertEqual(item["workflow_approver_mode"], "SEQUENTIAL")
+
+    def test_scope_all_lists_approver_assigned_requests_before_approval(self):
+        request_id = self.create_request()
+
+        pending_only = auth_client(self.approver).get(
+            "/api/requests/list/"
+        )
+        self.assertNotIn(
+            request_id,
+            [item["id"] for item in json.loads(pending_only.content)],
+        )
+
+        all_requests = auth_client(self.approver).get(
+            "/api/requests/list/?scope=all"
+        )
+        data = json.loads(all_requests.content)
+
+        self.assertIn(request_id, [item["id"] for item in data])
 
     def test_detail_permission(self):
         request_id = self.create_request()
@@ -302,3 +497,212 @@ class RequestFlowTests(TestCase):
         self.assertFalse(
             Request.objects.filter(title="Inactive type request").exists()
         )
+
+    def test_new_request_is_draft(self):
+        response = auth_client(self.owner).post(
+            "/api/requests/create/",
+            data=json.dumps(
+                {
+                    "request_type": self.request_type_id,
+                    "title": "Draft request",
+                    "description": "Not submitted yet.",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+        data = json.loads(response.content)
+
+        self.assertEqual(data["status"], "DRAFT")
+        self.assertTrue(data["is_editable"])
+
+        request_obj = Request.objects.get(id=data["id"])
+
+        self.assertIsNone(request_obj.current_verifier)
+        self.assertFalse(request_obj.assignments.exists())
+        self.assertFalse(
+            Notification.objects.filter(receiver=self.verifier).exists()
+        )
+
+    def test_owner_can_edit_draft(self):
+        request_id = self.create_request(submit=False)
+
+        response = auth_client(self.owner).patch(
+            f"/api/requests/{request_id}/draft/",
+            data=json.dumps(
+                {
+                    "title": "Updated title",
+                    "description": "Updated description.",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        request_obj = Request.objects.get(id=request_id)
+
+        self.assertEqual(request_obj.title, "Updated title")
+        self.assertEqual(request_obj.description, "Updated description.")
+        self.assertEqual(request_obj.status, "DRAFT")
+        self.assertTrue(
+            AuditLog.objects.filter(
+                request=request_obj, action="UPDATED"
+            ).exists()
+        )
+
+    def test_owner_can_delete_draft(self):
+        request_id = self.create_request(submit=False)
+
+        response = auth_client(self.owner).delete(
+            f"/api/requests/{request_id}/draft/"
+        )
+        self.assertEqual(response.status_code, 204, response.content)
+        self.assertFalse(Request.objects.filter(id=request_id).exists())
+
+    def test_owner_can_submit_draft_immediately(self):
+        request_id = self.create_request(submit=False)
+
+        response = auth_client(self.owner).post(
+            f"/api/requests/{request_id}/submit/"
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        request_obj = Request.objects.get(id=request_id)
+
+        self.assertEqual(request_obj.status, "PENDING")
+        self.assertEqual(request_obj.current_verifier, self.verifier)
+        self.assertIsNotNone(request_obj.action_deadline)
+        self.assertTrue(
+            request_obj.assignments.filter(
+                role="VERIFIER", user=self.verifier
+            ).exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(
+                receiver=self.verifier,
+                message__contains="awaits your verification",
+            ).exists()
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(
+                request=request_obj,
+                action="SUBMITTED",
+                message__contains="after review",
+            ).exists()
+        )
+
+    def test_draft_cannot_be_submitted_twice(self):
+        request_id = self.create_request(submit=False)
+
+        first = auth_client(self.owner).post(
+            f"/api/requests/{request_id}/submit/"
+        )
+        self.assertEqual(first.status_code, 200, first.content)
+
+        second = auth_client(self.owner).post(
+            f"/api/requests/{request_id}/submit/"
+        )
+        self.assertEqual(second.status_code, 400)
+
+    def test_other_user_cannot_submit_draft(self):
+        request_id = self.create_request(submit=False)
+
+        outsider = User.objects.create_user(
+            username="submitoutsider",
+            email="submitoutsider@test.com",
+            password="password123",
+            role="USER",
+        )
+
+        response = auth_client(outsider).post(
+            f"/api/requests/{request_id}/submit/"
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            Request.objects.get(id=request_id).status, "DRAFT"
+        )
+
+    def test_other_user_cannot_modify_draft(self):
+        request_id = self.create_request(submit=False)
+
+        outsider = User.objects.create_user(
+            username="draftoutsider",
+            email="draftoutsider@test.com",
+            password="password123",
+            role="USER",
+        )
+
+        patch = auth_client(outsider).patch(
+            f"/api/requests/{request_id}/draft/",
+            data=json.dumps({"title": "Hijacked"}),
+            content_type="application/json",
+        )
+        self.assertEqual(patch.status_code, 403)
+
+        delete = auth_client(outsider).delete(
+            f"/api/requests/{request_id}/draft/"
+        )
+        self.assertEqual(delete.status_code, 403)
+        self.assertTrue(Request.objects.filter(id=request_id).exists())
+
+    def test_draft_auto_submits_after_window(self):
+        from .services import submit_due_drafts
+
+        request_id = self.create_request(submit=False)
+
+        request_obj = Request.objects.get(id=request_id)
+        request_obj.action_deadline = timezone.now() - timedelta(seconds=1)
+        request_obj.save(update_fields=["action_deadline"])
+
+        submitted = submit_due_drafts()
+        self.assertEqual(submitted, 1)
+
+        request_obj.refresh_from_db()
+
+        self.assertEqual(request_obj.status, "PENDING")
+        self.assertEqual(request_obj.current_verifier, self.verifier)
+        self.assertTrue(
+            request_obj.assignments.filter(
+                role="VERIFIER", user=self.verifier
+            ).exists()
+        )
+        self.assertTrue(
+            Notification.objects.filter(
+                receiver=self.verifier,
+                message__contains="awaits your verification",
+            ).exists()
+        )
+        self.assertTrue(
+            AuditLog.objects.filter(
+                request=request_obj, action="SUBMITTED"
+            ).exists()
+        )
+
+    def test_draft_before_window_stays_draft(self):
+        from .services import submit_due_drafts
+
+        request_id = self.create_request(submit=False)
+
+        self.assertEqual(submit_due_drafts(), 0)
+        self.assertEqual(
+            Request.objects.get(id=request_id).status, "DRAFT"
+        )
+
+    def test_expired_draft_cannot_be_edited(self):
+        request_id = self.create_request(submit=False)
+
+        request_obj = Request.objects.get(id=request_id)
+        request_obj.action_deadline = timezone.now() - timedelta(seconds=1)
+        request_obj.save(update_fields=["action_deadline"])
+
+        response = auth_client(self.owner).patch(
+            f"/api/requests/{request_id}/draft/",
+            data=json.dumps({"title": "Too late"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+        request_obj.refresh_from_db()
+        self.assertEqual(request_obj.status, "PENDING")
+        self.assertNotEqual(request_obj.title, "Too late")

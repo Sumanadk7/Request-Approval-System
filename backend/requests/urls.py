@@ -3,6 +3,8 @@ from django.urls import path
 
 from .views import (
     RequestCreateView,
+    RequestDraftView,
+    RequestDraftSubmitView,
     RequestListView,
     RequestDetailView,
     RequestVerifyView,
@@ -20,6 +22,18 @@ urlpatterns = [
         "create/",
         RequestCreateView.as_view(),
         name="request-create"
+    ),
+
+    path(
+        "<int:pk>/draft/",
+        RequestDraftView.as_view(),
+        name="request-draft"
+    ),
+
+    path(
+        "<int:pk>/submit/",
+        RequestDraftSubmitView.as_view(),
+        name="request-submit"
     ),
 
     path(

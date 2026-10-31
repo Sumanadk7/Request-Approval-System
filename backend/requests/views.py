@@ -19,6 +19,15 @@ from .serializers import (
     RequestDetailSerializer,
 )
 
+from .services import (
+    EDIT_WINDOW,
+    notify_admins,
+    notify_users,
+    process_overdue_requests,
+    submit_draft_request,
+    submit_due_drafts,
+)
+
 from accounts.permissions import (
     IsUser,
     IsAssignedVerifier,
@@ -43,30 +52,6 @@ from datetime import timedelta
 from audit.models import AuditLog
 
 from audit.serializers import AuditLogSerializer
-
-
-def notify_admins(message):
-    admins = User.objects.filter(
-        is_staff=True,
-        is_active=True
-    )
-
-    for admin in admins:
-        Notification.objects.create(
-            receiver=admin,
-            message=message
-        )
-
-
-def notify_users(users, message):
-    for user in users:
-        if user is None:
-            continue
-
-        Notification.objects.create(
-            receiver=user,
-            message=message
-        )
 
 
 class CanViewRequestDetail(IsAuthenticated):
@@ -98,8 +83,6 @@ class RequestCreateView(generics.CreateAPIView):
 
     @transaction.atomic
     def perform_create(self, serializer):
-        deadline = timezone.now() + timedelta(hours=24)
-
         request_type = serializer.validated_data["request_type"]
 
         if not request_type.is_active:
@@ -120,66 +103,21 @@ class RequestCreateView(generics.CreateAPIView):
             )
 
         # -----------------------------------------
-        # FIRST VERIFIER
+        # CREATE DRAFT
         # -----------------------------------------
-
-        first_verifier = workflow.assignments.filter(
-            role="VERIFIER",
-            order=1,
-            is_active=True
-        ).first()
-
-        # -----------------------------------------
-        # CREATE REQUEST
-        # -----------------------------------------
+        # Assignments are captured when the draft is submitted, so edits to
+        # the request type or workflow during the editing window are used.
 
         request_obj = serializer.save(
             user=self.request.user,
-            current_verifier=(
-                first_verifier.user
-                if first_verifier
-                else None
-            ),
+            status="DRAFT",
+            current_verifier=None,
             current_verifier_order=1,
             current_approver=None,
             current_approver_order=1,
-            action_deadline=deadline,
+            action_deadline=timezone.now() + EDIT_WINDOW,
             deadline_alert_sent=False
         )
-
-        # =====================================================
-        # VERIFIER ASSIGNMENT SNAPSHOT
-        # =====================================================
-
-        verifier_assignments = workflow.assignments.filter(
-            role="VERIFIER",
-            is_active=True
-        )
-
-        for assignment in verifier_assignments:
-            RequestAssignment.objects.create(
-                request=request_obj,
-                user=assignment.user,
-                role="VERIFIER",
-                order=assignment.order
-            )
-
-        # =====================================================
-        # APPROVER ASSIGNMENT SNAPSHOT
-        # =====================================================
-
-        approver_assignments = workflow.assignments.filter(
-            role="APPROVER",
-            is_active=True
-        )
-
-        for assignment in approver_assignments:
-            RequestAssignment.objects.create(
-                request=request_obj,
-                user=assignment.user,
-                role="APPROVER",
-                order=assignment.order
-            )
 
         # =====================================================
         # AUDIT
@@ -189,34 +127,171 @@ class RequestCreateView(generics.CreateAPIView):
             request=request_obj,
             user=self.request.user,
             action="CREATED",
-            message="Request created."
+            message=(
+                "Request created as a draft. It can be edited or "
+                "deleted for 24 hours and is submitted automatically "
+                "afterwards."
+            )
         )
 
-        # =====================================================
-        # NOTIFY ADMINS
-        # =====================================================
+
+# =========================================================
+# EDIT / DELETE DRAFT (OWNER, FIRST 24 HOURS)
+# =========================================================
+
+class RequestDraftView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_editable_request(self, user, pk):
+        submit_due_drafts()
+
+        try:
+            request_obj = Request.objects.get(id=pk)
+        except Request.DoesNotExist:
+            return None, Response(
+                {"detail": "Request not found."},
+                status=404
+            )
+
+        if request_obj.user_id != user.id:
+            return None, Response(
+                {"detail": "You can only modify your own requests."},
+                status=403
+            )
+
+        if request_obj.status != "DRAFT":
+            return None, Response(
+                {"detail": "This request can no longer be edited."},
+                status=400
+            )
+
+        if (
+            request_obj.action_deadline is None
+            or request_obj.action_deadline <= timezone.now()
+        ):
+            return None, Response(
+                {"detail": "The 24-hour editing window has ended."},
+                status=400
+            )
+
+        return request_obj, None
+
+    def patch(self, request, pk):
+        request_obj, error = self.get_editable_request(
+            request.user,
+            pk
+        )
+
+        if error is not None:
+            return error
+
+        serializer = RequestSerializer(
+            request_obj,
+            data=request.data,
+            partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+
+        new_type = serializer.validated_data.get("request_type")
+
+        if new_type and new_type.id != request_obj.request_type_id:
+            if not new_type.is_active:
+                return Response(
+                    {"detail": "The selected request type is inactive."},
+                    status=400
+                )
+
+            workflow = getattr(new_type, "workflow", None)
+
+            if workflow is None or not workflow.is_active:
+                return Response(
+                    {
+                        "detail": (
+                            "The selected request type has no active "
+                            "workflow configured."
+                        )
+                    },
+                    status=400
+                )
+
+        old_attachment = (
+            request_obj.attachment if request_obj.attachment else None
+        )
+        old_attachment_name = (
+            old_attachment.name if old_attachment else None
+        )
+
+        updated_request = serializer.save()
+
+        if (
+            old_attachment
+            and updated_request.attachment
+            and old_attachment_name != updated_request.attachment.name
+        ):
+            old_attachment.delete(save=False)
+
+        AuditLog.objects.create(
+            request=updated_request,
+            user=request.user,
+            action="UPDATED",
+            message=(
+                "Request details updated by the owner during the "
+                "24-hour editing window."
+            )
+        )
+
+        return Response(
+            RequestDetailSerializer(updated_request).data
+        )
+
+    def delete(self, request, pk):
+        request_obj, error = self.get_editable_request(
+            request.user,
+            pk
+        )
+
+        if error is not None:
+            return error
+
+        title = request_obj.title
+        attachment = (
+            request_obj.attachment if request_obj.attachment else None
+        )
+
+        request_obj.delete()
+
+        if attachment:
+            attachment.delete(save=False)
 
         notify_admins(
-            f'New request "{request_obj.title}" '
-            f'created by {self.request.user.username}. '
-            f'Request type: {request_type.name}.'
+            f'Draft request "{title}" was deleted by '
+            f'{request.user.username} during the 24-hour '
+            f'editing window.'
         )
 
-        # =====================================================
-        # NOTIFY ASSIGNED VERIFIERS
-        # =====================================================
+        return Response(status=204)
 
-        verifier_users = User.objects.filter(
-            id__in=verifier_assignments.values_list(
-                "user_id", flat=True
-            ),
-            is_active=True
+
+# =========================================================
+# SUBMIT DRAFT NOW (OWNER, FIRST 24 HOURS)
+# =========================================================
+
+class RequestDraftSubmitView(RequestDraftView):
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        request_obj, error = self.get_editable_request(
+            request.user,
+            pk
         )
 
-        notify_users(
-            verifier_users,
-            f'New request "{request_obj.title}" '
-            f'awaits your verification.'
+        if error is not None:
+            return error
+
+        submit_draft_request(request_obj, automatic=False)
+
+        return Response(
+            RequestDetailSerializer(request_obj).data
         )
 
 
@@ -827,6 +902,12 @@ class RequestApproveView(generics.UpdateAPIView):
                 is_active=True
             ).order_by("order").first()
 
+            if not next_approver and not approval_message:
+                raise ValidationError(
+                    "As the final approver, you must include the "
+                    "next steps for the requester."
+                )
+
             # -----------------------------------------
             # MOVE TO NEXT APPROVER
             # -----------------------------------------
@@ -964,16 +1045,6 @@ class RequestApproveView(generics.UpdateAPIView):
                 )
 
             # -----------------------------------------
-            # SAVE APPROVER ACTION
-            # -----------------------------------------
-
-            RequestApproverAction.objects.create(
-                request=request_obj,
-                approver=self.request.user,
-                action="APPROVED"
-            )
-
-            # -----------------------------------------
             # TOTAL APPROVERS
             # -----------------------------------------
 
@@ -989,11 +1060,29 @@ class RequestApproveView(generics.UpdateAPIView):
                 ).count()
             )
 
+            will_be_final = approved_approvers + 1 >= total_approvers
+
+            if will_be_final and not approval_message:
+                raise ValidationError(
+                    "As the final approver, you must include the "
+                    "next steps for the requester."
+                )
+
+            # -----------------------------------------
+            # SAVE APPROVER ACTION
+            # -----------------------------------------
+
+            RequestApproverAction.objects.create(
+                request=request_obj,
+                approver=self.request.user,
+                action="APPROVED"
+            )
+
             # -----------------------------------------
             # ALL APPROVERS COMPLETED
             # -----------------------------------------
 
-            if approved_approvers >= total_approvers:
+            if will_be_final:
 
                 serializer.save(
                     status="APPROVED",
@@ -1248,14 +1337,26 @@ class RequestListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        submit_due_drafts()
+        process_overdue_requests()
+
         user = self.request.user
+        scope = self.request.query_params.get("scope")
+
+        base_queryset = Request.objects.select_related(
+            "user",
+            "request_type__department",
+            "request_type__workflow",
+            "current_verifier",
+            "current_approver",
+        )
 
         # =====================================================
         # ADMIN
         # =====================================================
 
         if user.is_staff:
-            return Request.objects.all().order_by(
+            return base_queryset.all().order_by(
                 "-created_at"
             )
 
@@ -1264,7 +1365,7 @@ class RequestListView(generics.ListAPIView):
         # =====================================================
 
         if user.role == "USER":
-            return Request.objects.filter(
+            return base_queryset.filter(
                 user=user
             ).order_by("-created_at")
 
@@ -1274,11 +1375,18 @@ class RequestListView(generics.ListAPIView):
 
         elif user.role == "VERIFIER":
 
+            if scope == "all":
+                return base_queryset.filter(
+                    assignments__user=user,
+                    assignments__role="VERIFIER",
+                    assignments__is_active=True,
+                ).distinct().order_by("-created_at")
+
             # -----------------------------------------
             # SEQUENTIAL VERIFIER
             # -----------------------------------------
 
-            sequential_requests = Request.objects.filter(
+            sequential_requests = base_queryset.filter(
                 status__in=[
                     "PENDING",
                     "DECISION_REQUIRED"
@@ -1291,7 +1399,7 @@ class RequestListView(generics.ListAPIView):
             # PARALLEL VERIFIER
             # -----------------------------------------
 
-            parallel_requests = Request.objects.filter(
+            parallel_requests = base_queryset.filter(
                 status__in=[
                     "PENDING",
                     "DECISION_REQUIRED"
@@ -1315,11 +1423,18 @@ class RequestListView(generics.ListAPIView):
 
         elif user.role == "APPROVER":
 
+            if scope == "all":
+                return base_queryset.filter(
+                    assignments__user=user,
+                    assignments__role="APPROVER",
+                    assignments__is_active=True,
+                ).distinct().order_by("-created_at")
+
             # -----------------------------------------
             # SEQUENTIAL APPROVER
             # -----------------------------------------
 
-            sequential_requests = Request.objects.filter(
+            sequential_requests = base_queryset.filter(
                 status__in=[
                     "VERIFIED",
                     "DECISION_REQUIRED"
@@ -1332,7 +1447,7 @@ class RequestListView(generics.ListAPIView):
             # PARALLEL APPROVER
             # -----------------------------------------
 
-            parallel_requests = Request.objects.filter(
+            parallel_requests = base_queryset.filter(
                 status__in=[
                     "VERIFIED",
                     "DECISION_REQUIRED"
@@ -1374,7 +1489,8 @@ class VerifierHistoryView(generics.ListAPIView):
                 "REJECTED"
             ]
         ).select_related(
-            "request"
+            "request",
+            "request__request_type",
         ).order_by("-created_at")
 
 
@@ -1399,7 +1515,8 @@ class ApproverHistoryView(generics.ListAPIView):
                 "REJECTED"
             ]
         ).select_related(
-            "request"
+            "request",
+            "request__request_type",
         ).order_by("-created_at")
 
 
@@ -1411,6 +1528,12 @@ class RequestDetailView(generics.RetrieveAPIView):
     queryset = Request.objects.all()
     serializer_class = RequestDetailSerializer
     permission_classes = [CanViewRequestDetail]
+
+    def get(self, request, *args, **kwargs):
+        submit_due_drafts()
+        process_overdue_requests()
+
+        return super().get(request, *args, **kwargs)
 
 
 # =========================================================

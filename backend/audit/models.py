@@ -6,6 +6,8 @@ class AuditLog(models.Model):
 
     ACTION_CHOICES = (
         ("CREATED", "Created"),
+        ("UPDATED", "Updated"),
+        ("SUBMITTED", "Submitted"),
         ("VERIFIED", "Verified"),
         ("REJECTED", "Rejected"),
         ("APPROVED", "Approved"),
