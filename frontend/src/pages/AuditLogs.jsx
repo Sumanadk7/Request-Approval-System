@@ -65,7 +65,7 @@ function AuditLogs() {
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>S.N</th>
                   <th>Action</th>
                   <th>User</th>
                   <th>Message</th>
@@ -74,9 +74,9 @@ function AuditLogs() {
               </thead>
 
               <tbody>
-                {logs.map((log) => (
+                {logs.map((log, index) => (
                   <tr key={log.id}>
-                    <td>#{log.id}</td>
+                    <td>{index + 1}</td>
                     <td>{log.action}</td>
                     <td>{log.user || "-"}</td>
                     <td>{log.message}</td>

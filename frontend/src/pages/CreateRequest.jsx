@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import api from "../services/api";
 
@@ -13,6 +13,8 @@ function CreateRequest() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const fetchRequestTypes = async () => {
@@ -29,13 +31,30 @@ function CreateRequest() {
     fetchRequestTypes();
   }, []);
 
+  const clearAttachment = () => {
+    setAttachment(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const resetForm = () => {
+    setTitle("");
+    setDescription("");
+    setRequestType("");
+    clearAttachment();
+    setMessage("");
+    setError("");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     setMessage("");
     setError("");
 
-    if (!title || !description || !requestType) {
+    if (!title.trim() || !description.trim() || !requestType) {
       setError("Please fill all required fields.");
       return;
     }
@@ -46,27 +65,29 @@ function CreateRequest() {
       const formData = new FormData();
 
       formData.append("request_type", requestType);
-      formData.append("title", title);
-      formData.append("description", description);
+      formData.append("title", title.trim());
+      formData.append("description", description.trim());
 
       if (attachment) {
         formData.append("attachment", attachment);
       }
 
-      const response = await api.post("/requests/create/", formData);
+      await api.post("/requests/create/", formData);
 
-      console.log("Created request:", response.data);
-
-      setMessage("Request submitted successfully.");
+      setMessage(
+        "Request saved as a draft. You can edit or delete it in My Requests for the next 24 hours; it will then be submitted automatically.",
+      );
 
       setTitle("");
       setDescription("");
       setRequestType("");
-      setAttachment(null);
+      clearAttachment();
     } catch (error) {
       console.log("Failed to create request:", error);
 
-      setError("Failed to submit request.");
+      setError(
+        error.response?.data?.detail || "Failed to submit request.",
+      );
     } finally {
       setLoading(false);
     }
@@ -77,7 +98,10 @@ function CreateRequest() {
       <div className="page-title">
         <h1>Create Request</h1>
 
-        <p>Submit a new request for approval.</p>
+        <p>
+          Create a request. You can edit or delete it for 24 hours before
+          it is submitted automatically for approval.
+        </p>
       </div>
 
       <div className="section">
@@ -86,33 +110,21 @@ function CreateRequest() {
         </div>
 
         {message && (
-          <p
-            style={{
-              color: "#15803d",
-              marginBottom: "15px",
-            }}
-          >
-            {message}
-          </p>
+          <div className="alert alert-success">{message}</div>
         )}
 
-        {error && (
-          <p
-            style={{
-              color: "#dc2626",
-              marginBottom: "15px",
-            }}
-          >
-            {error}
-          </p>
-        )}
+        {error && <div className="alert alert-error">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <div className="form-group">
-              <label>Request Type</label>
+              <label htmlFor="request-type">
+                Request Type
+                <span className="required-mark">*</span>
+              </label>
 
               <select
+                id="request-type"
                 value={requestType}
                 onChange={(e) => setRequestType(e.target.value)}
               >
@@ -127,9 +139,13 @@ function CreateRequest() {
             </div>
 
             <div className="form-group">
-              <label>Title</label>
+              <label htmlFor="request-title">
+                Title
+                <span className="required-mark">*</span>
+              </label>
 
               <input
+                id="request-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -138,9 +154,13 @@ function CreateRequest() {
             </div>
 
             <div className="form-group full">
-              <label>Description</label>
+              <label htmlFor="request-description">
+                Description
+                <span className="required-mark">*</span>
+              </label>
 
               <textarea
+                id="request-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe your request..."
@@ -148,12 +168,48 @@ function CreateRequest() {
             </div>
 
             <div className="form-group full">
-              <label>Attachment</label>
+              <label htmlFor="request-attachment">
+                Attachment
+              </label>
 
-              <input
-                type="file"
-                onChange={(e) => setAttachment(e.target.files[0])}
-              />
+              <div className="file-upload">
+                <input
+                  ref={fileInputRef}
+                  id="request-attachment"
+                  type="file"
+                  className="file-upload-input"
+                  onChange={(e) =>
+                    setAttachment(e.target.files[0] || null)
+                  }
+                />
+
+                <label
+                  htmlFor="request-attachment"
+                  className="file-upload-label"
+                >
+                  Choose File
+                </label>
+
+                <span
+                  className={`file-upload-name ${
+                    attachment ? "has-file" : ""
+                  }`}
+                >
+                  {attachment
+                    ? attachment.name
+                    : "No file chosen"}
+                </span>
+
+                {attachment && (
+                  <button
+                    type="button"
+                    className="btn btn-clear"
+                    onClick={clearAttachment}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -161,14 +217,7 @@ function CreateRequest() {
             <button
               type="button"
               className="btn btn-clear"
-              onClick={() => {
-                setTitle("");
-                setDescription("");
-                setRequestType("");
-                setAttachment(null);
-                setMessage("");
-                setError("");
-              }}
+              onClick={resetForm}
             >
               Clear
             </button>
@@ -178,7 +227,7 @@ function CreateRequest() {
               className="btn btn-primary"
               disabled={loading}
             >
-              {loading ? "Submitting..." : "Submit Request"}
+              {loading ? "Saving..." : "Save Request"}
             </button>
           </div>
         </form>

@@ -31,7 +31,11 @@ function Requests() {
   const renderStatus = (status) => {
     return (
       <span className={`status ${status?.toLowerCase()}`}>
-        {status ? status.replace("_", " ") : ""}
+        {status === "DRAFT"
+          ? "Draft"
+          : status
+            ? status.replace("_", " ")
+            : ""}
       </span>
     );
   };
@@ -81,7 +85,7 @@ function Requests() {
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>S.N</th>
                   <th>Request Type</th>
                   <th>Title</th>
                   <th>Created By</th>
@@ -94,9 +98,9 @@ function Requests() {
               </thead>
 
               <tbody>
-                {requests.map((request) => (
+                {requests.map((request, index) => (
                   <tr key={request.id}>
-                    <td>#{request.id}</td>
+                    <td>{index + 1}</td>
 
                     <td>{request.request_type_name}</td>
 

@@ -201,15 +201,6 @@ function Sidebar({ role, isAdmin, onNavigate, currentPage }) {
                         Dashboard
                     </li>
 
-                    <li
-                        className={getActiveClass("pending-requests")}
-                        onClick={() =>
-                            handleNavigate("pending-requests")
-                        }
-                    >
-                        Pending Requests
-                    </li>
-
                     <NotificationMenuItem />
                 </ul>
             )}
@@ -227,15 +218,6 @@ function Sidebar({ role, isAdmin, onNavigate, currentPage }) {
                         }
                     >
                         Dashboard
-                    </li>
-
-                    <li
-                        className={getActiveClass("pending-approvals")}
-                        onClick={() =>
-                            handleNavigate("pending-approvals")
-                        }
-                    >
-                        Pending Approvals
                     </li>
 
                     <NotificationMenuItem />
