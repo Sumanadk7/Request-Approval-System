@@ -1,6 +1,6 @@
 # =========================================================
-#  Register a Windows Scheduled Task that runs the request
-#  deadline checker every 10 minutes.
+#  Register a Windows Scheduled Task that submits due drafts and
+#  runs the request deadline checker every 10 minutes.
 #  Run once as Administrator:
 #    powershell -ExecutionPolicy Bypass -File scripts\schedule_deadlines.ps1
 #  Linux/Mac equivalent (cron, runs every 10 minutes):

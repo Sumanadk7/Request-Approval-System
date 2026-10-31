@@ -6,6 +6,7 @@ from request_types.models import RequestType
 class Request(models.Model):
 
     STATUS_CHOICES = (
+        ("DRAFT", "Draft"),
         ("PENDING", "Pending"),
         ("VERIFIED", "Verified"),
         ("APPROVED", "Approved"),

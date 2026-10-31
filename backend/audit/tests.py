@@ -5,6 +5,8 @@ from django.test import Client, TestCase
 from accounts.models import User
 from departments.models import Department
 from request_types.models import RequestType
+from requests.models import Request
+from requests.services import submit_draft_request
 from workflow.models import Workflow, WorkflowAssignment
 
 
@@ -86,6 +88,8 @@ class RequestAuditAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 201, response.content)
         self.request_id = json.loads(response.content)["id"]
+
+        submit_draft_request(Request.objects.get(id=self.request_id))
 
     def test_owner_can_view_audit(self):
         response = auth_client(self.owner).get(
