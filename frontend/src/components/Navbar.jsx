@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import api from "../services/api";
 
-function Navbar() {
+function Navbar({ hideUsername = false }) {
   const [username, setUsername] = useState("User");
   const [showForm, setShowForm] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
@@ -74,7 +74,7 @@ function Navbar() {
 
       <div className="navbar-user">
         <div className="user-info">
-          <strong>{username}</strong>
+          {!hideUsername && <strong>{username}</strong>}
           <span>Online</span>
         </div>
 

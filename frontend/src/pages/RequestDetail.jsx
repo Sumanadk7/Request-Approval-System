@@ -1,31 +1,10 @@
 import { Fragment, useEffect, useState } from "react";
 
-import api, { API_URL } from "../services/api";
-
-const API_BASE = API_URL.replace(/\/api\/?$/, "");
-
-const getAttachmentUrl = (path) => {
-  if (!path) {
-    return "";
-  }
-
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-
-  return `${API_BASE}${path.startsWith("/") ? "" : "/"}${path}`;
-};
-
-const getFileNameFromUrl = (url) => {
-  try {
-    const decoded = decodeURIComponent(url.split("?")[0]);
-    const parts = decoded.split("/");
-
-    return parts[parts.length - 1] || "attachment";
-  } catch {
-    return "attachment";
-  }
-};
+import api from "../services/api";
+import {
+  getAttachmentUrl,
+  getFileNameFromUrl,
+} from "../utils/files";
 
 function RequestDetail({ requestId, onBack, onChanged }) {
   const [detail, setDetail] = useState(null);
@@ -44,7 +23,9 @@ function RequestDetail({ requestId, onBack, onChanged }) {
   const [reassignUser, setReassignUser] = useState("");
 
   const username = localStorage.getItem("username");
-  const isAdmin = localStorage.getItem("role") === "ADMIN";
+  const role = localStorage.getItem("role");
+  const isAdmin = role === "ADMIN";
+  const canViewFlowProgress = isAdmin || role === "APPROVER";
   const isOwner =
     (detail?.created_by || "") === (username || "");
 
@@ -149,6 +130,8 @@ function RequestDetail({ requestId, onBack, onChanged }) {
     (detail.status === "VERIFIED" || detail.status === "DECISION_REQUIRED");
 
   const canAct = canVerify || canApprove;
+  const canSubmitDraft =
+    isOwner && detail.status === "DRAFT" && detail.is_editable;
   const actVerb = canVerify ? "verify" : "approve";
   const actUrl = canVerify
     ? `/requests/${detail.id}/verify/`
@@ -166,8 +149,19 @@ function RequestDetail({ requestId, onBack, onChanged }) {
   };
 
   const handleAct = async () => {
+    if (
+      canApprove &&
+      detail.is_final_approver_step &&
+      !message.trim()
+    ) {
+      setError(
+        "As the final approver, enter the next steps for the requester.",
+      );
+      return;
+    }
+
     const confirmed = window.confirm(
-      `Are you sure you want to ${actVerb} request "${detail.title}" (#${detail.id})?`,
+      `Are you sure you want to ${actVerb} request "${detail.title}"?`,
     );
 
     if (!confirmed) {
@@ -198,6 +192,36 @@ function RequestDetail({ requestId, onBack, onChanged }) {
         err.response?.data?.detail ||
           err.response?.data?.[0] ||
           `Failed to ${actVerb} request.`,
+      );
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleSubmitDraft = async () => {
+    const confirmed = window.confirm(
+      `Submit request "${detail.title}" now? It will be sent to the verifier immediately and can no longer be edited.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setActing(true);
+      setError("");
+      setSuccess("");
+
+      await api.post(`/requests/${detail.id}/submit/`);
+
+      setSuccess("Request submitted successfully.");
+      setMessage("");
+
+      await refresh();
+    } catch (err) {
+      console.log("Failed to submit draft request:", err);
+      setError(
+        err.response?.data?.detail || "Failed to submit request.",
       );
     } finally {
       setActing(false);
@@ -402,14 +426,23 @@ function RequestDetail({ requestId, onBack, onChanged }) {
       </button>
 
       <div className="page-title" style={{ marginTop: "10px" }}>
-        <h1>
-          #{detail.id} — {detail.title}
-        </h1>
+        <h1>{detail.title}</h1>
         <p>
           {detail.request_type_name} • Submitted by{" "}
-          {detail.created_by || detail.user}
+          {isOwner ? "You" : detail.created_by || detail.user}
         </p>
       </div>
+
+      {detail.status === "DRAFT" && (
+        <div className="draft-notice">
+          <strong>Draft request.</strong> This request will be submitted
+          automatically on {formatDateTime(detail.action_deadline)}.{" "}
+          {isOwner
+            ? "You can edit or delete it"
+            : "The requester can edit or delete it"}{" "}
+          in My Requests until then.
+        </div>
+      )}
 
       {error && (
         <div
@@ -443,47 +476,103 @@ function RequestDetail({ requestId, onBack, onChanged }) {
 
       {/* ================= DOCUMENT ================= */}
 
-      <div className="section">
-        <div className="section-header">
-          <h2>Request Document</h2>
+      <div className="section document-card">
+        <div className="document-header">
+          <div>
+            <span className="document-eyebrow">Request Document</span>
+            <h2>{detail.title}</h2>
+            <p className="document-subtitle">
+              {detail.request_type_name}
+              {detail.department_name
+                ? ` • ${detail.department_name}`
+                : ""}
+            </p>
+          </div>
+
           <span className={`status ${detail.status?.toLowerCase()}`}>
-            {detail.status?.replace("_", " ")}
+            {detail.status === "DRAFT"
+              ? "Draft"
+              : detail.status?.replace("_", " ")}
           </span>
         </div>
 
-        <p>
-          <strong>Description:</strong>
-        </p>
-        <p style={{ whiteSpace: "pre-wrap" }}>{detail.description}</p>
+        <div className="document-meta">
+          <div className="document-meta-item">
+            <span className="document-meta-label">Request Type</span>
+            <span className="document-meta-value">
+              {detail.request_type_name || "—"}
+            </span>
+          </div>
 
-        <div className="form-grid" style={{ marginTop: "15px" }}>
-          <div>
-            <strong>Request Type:</strong> {detail.request_type_name}
+          <div className="document-meta-item">
+            <span className="document-meta-label">Department</span>
+            <span className="document-meta-value">
+              {detail.department_name || "—"}
+            </span>
           </div>
-          <div>
-            <strong>Submitted By:</strong>{" "}
-            {detail.created_by || detail.user}
+
+          <div className="document-meta-item">
+            <span className="document-meta-label">Submitted By</span>
+            <span className="document-meta-value">
+              {isOwner ? "You" : detail.created_by || detail.user}
+            </span>
           </div>
-          <div>
-            <strong>Submitted:</strong> {formatDateTime(detail.created_at)}
+
+          <div className="document-meta-item">
+            <span className="document-meta-label">Submitted On</span>
+            <span className="document-meta-value">
+              {formatDateTime(detail.created_at)}
+            </span>
           </div>
-          <div>
-            <strong>Last Updated:</strong> {formatDateTime(detail.updated_at)}
+
+          <div className="document-meta-item">
+            <span className="document-meta-label">Last Updated</span>
+            <span className="document-meta-value">
+              {formatDateTime(detail.updated_at)}
+            </span>
           </div>
-          <div>
-            <strong>Action Deadline:</strong>{" "}
-            {formatDateTime(detail.action_deadline)}
+
+          <div className="document-meta-item">
+            <span className="document-meta-label">
+              {detail.status === "DRAFT"
+                ? "Auto-submit At"
+                : "Action Deadline"}
+            </span>
+            <span className="document-meta-value">
+              {formatDateTime(detail.action_deadline)}
+            </span>
           </div>
-          <div>
-            <strong>Attachment:</strong>{" "}
-            {detail.attachment ? (
-              <div className="attachment-actions">
+        </div>
+
+        <div className="document-section">
+          <h3>Description</h3>
+          <p className="document-description">
+            {detail.description || "No description provided."}
+          </p>
+        </div>
+
+        {detail.request_type_description && (
+          <div className="document-section">
+            <h3>Request Type Details</h3>
+            <p className="document-description">
+              {detail.request_type_description}
+            </p>
+          </div>
+        )}
+
+        <div className="document-section">
+          <h3>Attachment</h3>
+
+          {detail.attachment ? (
+            <div className="attachment-card">
+              <div className="attachment-info">
+                <span className="attachment-label">Attached file</span>
                 <span className="attachment-name">
-                  {getFileNameFromUrl(
-                    getAttachmentUrl(detail.attachment),
-                  )}
+                  {getFileNameFromUrl(detail.attachment)}
                 </span>
+              </div>
 
+              <div className="attachment-actions">
                 <a
                   href={getAttachmentUrl(detail.attachment)}
                   target="_blank"
@@ -502,10 +591,12 @@ function RequestDetail({ requestId, onBack, onChanged }) {
                   {downloading ? "Downloading..." : "Download"}
                 </button>
               </div>
-            ) : (
-              "No attachment"
-            )}
-          </div>
+            </div>
+          ) : (
+            <p className="muted-text">
+              No attachment was provided with this request.
+            </p>
+          )}
         </div>
       </div>
 
@@ -540,13 +631,55 @@ function RequestDetail({ requestId, onBack, onChanged }) {
         </div>
       )}
 
-      {/* ================= FLOW PROGRESS ================= */}
-      {/* Hidden from the request owner (user dashboard) */}
+      {/* ================= SUBMIT DRAFT ================= */}
 
-      {!isOwner && (
+      {canSubmitDraft && (
+        <div className="section">
+          <div className="section-header">
+            <h2>Submit Request</h2>
+          </div>
+
+          <p>
+            Review the request details above. Submitting now sends the
+            request to the verifier immediately, and it can no longer be
+            edited or deleted.
+          </p>
+
+          <div className="form-actions">
+            <button
+              type="button"
+              className="btn btn-success"
+              disabled={acting}
+              onClick={handleSubmitDraft}
+            >
+              {acting ? "Submitting..." : "Submit Now"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================= FLOW PROGRESS ================= */}
+      {/* Visible to admins and approvers only */}
+
+      {!isOwner && canViewFlowProgress && (
       <div className="section">
         <div className="section-header">
           <h2>Approval Flow Progress</h2>
+        </div>
+
+        <div className="workflow-summary">
+          <span className="workflow-mode">
+            <strong>Verification:</strong>{" "}
+            {detail.workflow_verifier_mode === "PARALLEL"
+              ? "Parallel"
+              : "Sequential"}
+          </span>
+          <span className="workflow-mode">
+            <strong>Approval:</strong>{" "}
+            {detail.workflow_approver_mode === "PARALLEL"
+              ? "Parallel"
+              : "Sequential"}
+          </span>
         </div>
 
         <h3>
@@ -616,13 +749,19 @@ function RequestDetail({ requestId, onBack, onChanged }) {
 
           <div className="form-group">
             <label>
-              Message to requester (optional, sent on {actVerb})
+              {canApprove && detail.is_final_approver_step
+                ? "Next steps for the requester (required)"
+                : `Message to requester (optional, sent on ${actVerb})`}
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={3}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder={`Explain why you are ${actVerb}ing this request...`}
+              placeholder={
+                canApprove && detail.is_final_approver_step
+                  ? "Explain what the requester should do next..."
+                  : `Explain why you are ${actVerb}ing this request...`
+              }
             />
           </div>
 
@@ -630,7 +769,12 @@ function RequestDetail({ requestId, onBack, onChanged }) {
             <button
               type="button"
               className="btn btn-success"
-              disabled={acting}
+              disabled={
+                acting ||
+                (canApprove &&
+                  detail.is_final_approver_step &&
+                  !message.trim())
+              }
               onClick={handleAct}
             >
               {acting
@@ -656,25 +800,27 @@ function RequestDetail({ requestId, onBack, onChanged }) {
           </div>
 
           {showReject && (
-            <div
-              style={{ display: "flex", gap: "10px", marginTop: "15px" }}
-            >
-              <input
-                type="text"
-                value={rejectionMessage}
-                onChange={(e) => setRejectionMessage(e.target.value)}
-                placeholder="Rejection reason (required)"
-                style={{ flex: 1 }}
-              />
+            <div className="rejection-box">
+              <div className="form-group">
+                <label>Rejection reason (required)</label>
+                <textarea
+                  rows={3}
+                  value={rejectionMessage}
+                  onChange={(e) => setRejectionMessage(e.target.value)}
+                  placeholder="Explain clearly why this request is being rejected..."
+                />
+              </div>
 
-              <button
-                type="button"
-                className="btn btn-danger"
-                disabled={acting}
-                onClick={handleReject}
-              >
-                Confirm Reject
-              </button>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={acting || !rejectionMessage.trim()}
+                  onClick={handleReject}
+                >
+                  Confirm Reject
+                </button>
+              </div>
             </div>
           )}
         </div>

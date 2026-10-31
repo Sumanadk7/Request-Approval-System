@@ -14,6 +14,7 @@ function UserDashboard({ role, isAdmin }) {
 
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [statusFilter, setStatusFilter] = useState("ALL");
 
     useEffect(() => {
         const fetchRequests = async () => {
@@ -53,9 +54,50 @@ function UserDashboard({ role, isAdmin }) {
             request.status === "REJECTED"
     ).length;
 
+    const summaryCards = [
+        {
+            key: "ALL",
+            label: "Total Requests",
+            value: totalRequests,
+        },
+        {
+            key: "PENDING",
+            label: "Pending",
+            value: pendingRequests,
+        },
+        {
+            key: "APPROVED",
+            label: "Approved",
+            value: approvedRequests,
+        },
+        {
+            key: "REJECTED",
+            label: "Rejected",
+            value: rejectedRequests,
+        },
+    ];
+
+    const activeCard = summaryCards.find(
+        (card) => card.key === statusFilter
+    );
+
+    const filteredRequests =
+        statusFilter === "ALL"
+            ? requests
+            : requests.filter(
+                  (request) =>
+                      request.status === statusFilter
+              );
+
+    const orderedRequests = [...filteredRequests].sort(
+        (first, second) =>
+            new Date(second.created_at) -
+            new Date(first.created_at)
+    );
+
     return (
         <div>
-            <Navbar />
+            <Navbar hideUsername={currentPage === "my-requests"} />
 
             <div className="dashboard-content">
                 <Sidebar
@@ -84,54 +126,58 @@ function UserDashboard({ role, isAdmin }) {
                             </div>
 
                             <div className="dashboard-cards">
-                                <div className="dashboard-card">
-                                    <h3>
-                                        Total Requests
-                                    </h3>
+                                {summaryCards.map((card) => (
+                                    <button
+                                        key={card.key}
+                                        type="button"
+                                        className={`dashboard-card dashboard-card-button ${
+                                            statusFilter ===
+                                            card.key
+                                                ? "active"
+                                                : ""
+                                        }`}
+                                        onClick={() =>
+                                            setStatusFilter(
+                                                card.key
+                                            )
+                                        }
+                                        aria-pressed={
+                                            statusFilter ===
+                                            card.key
+                                        }
+                                    >
+                                        <h3>{card.label}</h3>
 
-                                    <h2>
-                                        {loading
-                                            ? "..."
-                                            : totalRequests}
-                                    </h2>
-                                </div>
-
-                                <div className="dashboard-card">
-                                    <h3>Pending</h3>
-
-                                    <h2>
-                                        {loading
-                                            ? "..."
-                                            : pendingRequests}
-                                    </h2>
-                                </div>
-
-                                <div className="dashboard-card">
-                                    <h3>Approved</h3>
-
-                                    <h2>
-                                        {loading
-                                            ? "..."
-                                            : approvedRequests}
-                                    </h2>
-                                </div>
-
-                                <div className="dashboard-card">
-                                    <h3>Rejected</h3>
-
-                                    <h2>
-                                        {loading
-                                            ? "..."
-                                            : rejectedRequests}
-                                    </h2>
-                                </div>
+                                        <h2>
+                                            {loading
+                                                ? "..."
+                                                : card.value}
+                                        </h2>
+                                    </button>
+                                ))}
                             </div>
 
                             <div className="section">
                                 <div className="section-header">
                                     <h2>
-                                        Recent Requests
+                                        {statusFilter === "ALL"
+                                            ? "Recent Requests"
+                                            : `${activeCard.label} Requests`}
                                     </h2>
+
+                                    {statusFilter !== "ALL" && (
+                                        <button
+                                            type="button"
+                                            className="btn btn-clear"
+                                            onClick={() =>
+                                                setStatusFilter(
+                                                    "ALL"
+                                                )
+                                            }
+                                        >
+                                            Show All
+                                        </button>
+                                    )}
                                 </div>
 
                                 {requests.length === 0 ? (
@@ -139,13 +185,20 @@ function UserDashboard({ role, isAdmin }) {
                                         You have no
                                         requests yet.
                                     </p>
+                                ) : filteredRequests.length ===
+                                  0 ? (
+                                    <p>
+                                        No{" "}
+                                        {activeCard.label.toLowerCase()}{" "}
+                                        requests found.
+                                    </p>
                                 ) : (
                                     <div className="table-wrapper">
                                         <table>
                                             <thead>
                                                 <tr>
                                                     <th>
-                                                        ID
+                                                        S.N
                                                     </th>
 
                                                     <th>
@@ -163,9 +216,10 @@ function UserDashboard({ role, isAdmin }) {
                                             </thead>
 
                                             <tbody>
-                                                {requests.map(
+                                                {orderedRequests.map(
                                                     (
-                                                        request
+                                                        request,
+                                                        index
                                                     ) => (
                                                         <tr
                                                             key={
@@ -173,10 +227,8 @@ function UserDashboard({ role, isAdmin }) {
                                                             }
                                                         >
                                                             <td>
-                                                                #
-                                                                {
-                                                                    request.id
-                                                                }
+                                                                {index +
+                                                                    1}
                                                             </td>
 
                                                             <td>
@@ -189,9 +241,10 @@ function UserDashboard({ role, isAdmin }) {
                                                                 <span
                                                                     className={`status ${request.status.toLowerCase()}`}
                                                                 >
-                                                                    {
-                                                                        request.status
-                                                                    }
+                                                                    {request.status ===
+                                                                    "DRAFT"
+                                                                        ? "Draft"
+                                                                        : request.status}
                                                                 </span>
                                                             </td>
 

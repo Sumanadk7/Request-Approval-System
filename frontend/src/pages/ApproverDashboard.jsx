@@ -3,12 +3,17 @@ import { Fragment, useEffect, useState } from "react";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import api from "../services/api";
+import {
+  getAttachmentUrl,
+  getFileNameFromUrl,
+} from "../utils/files";
 import Notifications from "./Notifications";
 import RequestDetail from "./RequestDetail";
 
 function ApproverDashboard() {
   const role = "APPROVER";
   const isAdmin = false;
+  const username = localStorage.getItem("username");
 
   const [currentPage, setCurrentPage] = useState("dashboard");
 
@@ -22,14 +27,17 @@ function ApproverDashboard() {
 
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectionMessage, setRejectionMessage] = useState("");
+  const [approvingId, setApprovingId] = useState(null);
+  const [approvalMessage, setApprovalMessage] = useState("");
   const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   const fetchRequests = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const response = await api.get("/requests/list/");
+      const response = await api.get("/requests/list/?scope=all");
 
       setRequests(response.data);
     } catch (error) {
@@ -60,26 +68,133 @@ function ApproverDashboard() {
     fetchHistory();
   }, []);
 
-  const pendingRequests = requests.filter(
+  const actionByRequest = {};
+
+  history.forEach((entry) => {
+    if (entry.request && !actionByRequest[entry.request]) {
+      actionByRequest[entry.request] = entry.action;
+    }
+  });
+
+  const isPending = (request) => {
+    if (actionByRequest[request.id]) {
+      return false;
+    }
+
+    if (
+      request.status !== "VERIFIED" &&
+      request.status !== "DECISION_REQUIRED"
+    ) {
+      return false;
+    }
+
+    if (request.workflow_approver_mode === "PARALLEL") {
+      return (
+        request.status === "VERIFIED" ||
+        Boolean(request.current_approver_username)
+      );
+    }
+
+    return request.current_approver_username === username;
+  };
+
+  const decisionRequiredRequests = requests.filter(
     (request) =>
-      request.status === "VERIFIED" ||
-      request.status === "DECISION_REQUIRED",
+      isPending(request) || request.status === "DECISION_REQUIRED",
   );
 
-  const approvedCount = history.filter(
-    (entry) => entry.action === "APPROVED",
-  ).length;
+  const approvedRequests = requests.filter(
+    (request) => actionByRequest[request.id] === "APPROVED",
+  );
 
-  const rejectedCount = history.filter(
-    (entry) => entry.action === "REJECTED",
-  ).length;
+  const rejectedRequests = requests.filter(
+    (request) => actionByRequest[request.id] === "REJECTED",
+  );
 
-  const handleApprove = async (request) => {
-    const confirmed = window.confirm(
-      `Approve request "${request.title}" (#${request.id})?`,
-    );
+  const summaryCards = [
+    {
+      key: "ALL",
+      label: "Assigned Requests",
+      value: requests.length,
+    },
+    {
+      key: "DECISION_REQUIRED",
+      label: "Decision Required",
+      value: decisionRequiredRequests.length,
+    },
+    {
+      key: "APPROVED",
+      label: "Approved by You",
+      value: approvedRequests.length,
+    },
+    {
+      key: "REJECTED",
+      label: "Rejected by You",
+      value: rejectedRequests.length,
+    },
+  ];
 
-    if (!confirmed) {
+  const activeCard = summaryCards.find(
+    (card) => card.key === statusFilter,
+  );
+
+  const displayRequests =
+    statusFilter === "ALL"
+      ? requests
+      : statusFilter === "DECISION_REQUIRED"
+        ? decisionRequiredRequests
+        : statusFilter === "APPROVED"
+          ? approvedRequests
+          : rejectedRequests;
+
+  const workflowLabel = (request) => {
+    if (request.status === "APPROVED") {
+      return "Approval complete";
+    }
+
+    if (request.status === "REJECTED") {
+      return "Rejected";
+    }
+
+    if (request.status === "DRAFT") {
+      return "Draft";
+    }
+
+    if (request.current_verifier_username) {
+      const mode =
+        request.workflow_verifier_mode === "PARALLEL"
+          ? "Parallel"
+          : "Sequential";
+
+      return `${mode} verification · step ${request.current_verifier_order}`;
+    }
+
+    if (request.current_approver_username) {
+      const mode =
+        request.workflow_approver_mode === "PARALLEL"
+          ? "Parallel"
+          : "Sequential";
+
+      return `${mode} approval · step ${request.current_approver_order}`;
+    }
+
+    return "—";
+  };
+
+  const handleApprove = async (request, nextSteps = "") => {
+    const finalMessage = nextSteps.trim();
+
+    if (request.is_final_approver_step && !finalMessage) {
+      setError(
+        "As the final approver, enter the next steps for the requester.",
+      );
+      return;
+    }
+
+    if (
+      !request.is_final_approver_step &&
+      !window.confirm(`Approve request "${request.title}"?`)
+    ) {
       return;
     }
 
@@ -88,9 +203,15 @@ function ApproverDashboard() {
       setError("");
       setSuccess("");
 
-      await api.patch(`/requests/${request.id}/approve/`, {});
+      await api.patch(
+        `/requests/${request.id}/approve/`,
+        finalMessage ? { approval_message: finalMessage } : {},
+      );
 
       setSuccess(`Request "${request.title}" approved.`);
+
+      setApprovingId(null);
+      setApprovalMessage("");
 
       await fetchRequests();
       await fetchHistory();
@@ -149,6 +270,8 @@ function ApproverDashboard() {
 
     return new Date(date).toLocaleDateString();
   };
+
+  const statsLoading = loading || historyLoading;
 
   return (
     <div>
@@ -216,75 +339,73 @@ function ApproverDashboard() {
                 </div>
               )}
 
-              {/* =========================
-                  SUMMARY CARDS
-                 ========================= */}
-
               <div className="dashboard-cards">
-                <div className="dashboard-card">
-                  <h3>Assigned Requests</h3>
+                {summaryCards.map((card) => (
+                  <button
+                    key={card.key}
+                    type="button"
+                    className={`dashboard-card dashboard-card-button ${
+                      statusFilter === card.key ? "active" : ""
+                    }`}
+                    onClick={() => setStatusFilter(card.key)}
+                    aria-pressed={statusFilter === card.key}
+                  >
+                    <h3>{card.label}</h3>
 
-                  <h2>{loading ? "..." : requests.length}</h2>
-                </div>
-
-                <div className="dashboard-card">
-                  <h3>Pending Approval</h3>
-
-                  <h2>{loading ? "..." : pendingRequests.length}</h2>
-                </div>
-
-                <div className="dashboard-card">
-                  <h3>Approved by You</h3>
-
-                  <h2>{historyLoading ? "..." : approvedCount}</h2>
-                </div>
-
-                <div className="dashboard-card">
-                  <h3>Rejected by You</h3>
-
-                  <h2>{historyLoading ? "..." : rejectedCount}</h2>
-                </div>
+                    <h2>{statsLoading ? "..." : card.value}</h2>
+                  </button>
+                ))}
               </div>
-
-              {/* =========================
-                  PENDING APPROVALS
-                 ========================= */}
 
               <div className="section">
                 <div className="section-header">
                   <h2>
-                    {currentPage === "pending-approvals"
-                      ? "Pending Approvals"
-                      : "Requests Requiring Attention"}
+                    {statusFilter === "ALL"
+                      ? "All Assigned Requests"
+                      : `${activeCard.label} Requests`}
                   </h2>
+
+                  {statusFilter !== "ALL" && (
+                    <button
+                      type="button"
+                      className="btn btn-clear"
+                      onClick={() => setStatusFilter("ALL")}
+                    >
+                      Show All
+                    </button>
+                  )}
                 </div>
 
                 {loading && <p>Loading assigned requests...</p>}
 
-                {!loading && !error && pendingRequests.length === 0 && (
-                  <p>No requests are currently waiting for approval.</p>
+                {!loading && !error && displayRequests.length === 0 && (
+                  <p>
+                    No {activeCard.label.toLowerCase()} requests found.
+                  </p>
                 )}
 
-                {!loading && !error && pendingRequests.length > 0 && (
+                {!loading && !error && displayRequests.length > 0 && (
                   <div className="table-wrapper">
                     <table>
                       <thead>
                         <tr>
-                          <th>ID</th>
+                          <th>S.N</th>
                           <th>User</th>
                           <th>Request Type</th>
                           <th>Title</th>
                           <th>Status</th>
+                          <th>Workflow</th>
                           <th>Created</th>
+                          <th>Attachment</th>
                           <th>Actions</th>
                         </tr>
                       </thead>
 
                       <tbody>
-                        {pendingRequests.map((request) => (
+                        {displayRequests.map((request, index) => (
                           <Fragment key={request.id}>
-                            <tr key={request.id}>
-                              <td>#{request.id}</td>
+                            <tr>
+                              <td>{index + 1}</td>
 
                               <td>
                                 {request.created_by || request.user || "—"}
@@ -305,146 +426,202 @@ function ApproverDashboard() {
                                 </span>
                               </td>
 
+                              <td>{workflowLabel(request)}</td>
+
                               <td>{formatDate(request.created_at)}</td>
 
                               <td>
-                                <button
-                                  type="button"
-                                  className="btn btn-info"
-                                  onClick={() =>
-                                    setSelectedRequestId(request.id)
-                                  }
-                                >
-                                  View
-                                </button>
+                                {request.attachment ? (
+                                  <a
+                                    href={getAttachmentUrl(
+                                      request.attachment,
+                                    )}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-info"
+                                    title={getFileNameFromUrl(
+                                      request.attachment,
+                                    )}
+                                  >
+                                    View File
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
 
-                                <button
-                                  type="button"
-                                  className="btn btn-success"
-                                  style={{ marginLeft: "8px" }}
-                                  disabled={actingId === request.id}
-                                  onClick={() => handleApprove(request)}
-                                >
-                                  {actingId === request.id
-                                    ? "Working..."
-                                    : "Approve"}
-                                </button>
+                              <td>
+                                <div className="table-actions">
+                                  <button
+                                    type="button"
+                                    className="btn btn-info"
+                                    onClick={() =>
+                                      setSelectedRequestId(request.id)
+                                    }
+                                  >
+                                    View
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  className="btn btn-danger"
-                                  style={{ marginLeft: "8px" }}
-                                  disabled={actingId === request.id}
-                                  onClick={() => {
-                                    setRejectingId(
-                                      rejectingId === request.id
-                                        ? null
-                                        : request.id,
-                                    );
-                                    setRejectionMessage("");
-                                    setError("");
-                                  }}
-                                >
-                                  Reject
-                                </button>
+                                  {isPending(request) && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="btn btn-success"
+                                        disabled={
+                                          actingId === request.id
+                                        }
+                                        onClick={() => {
+                                          if (
+                                            request.is_final_approver_step
+                                          ) {
+                                            setApprovingId(
+                                              approvingId === request.id
+                                                ? null
+                                                : request.id,
+                                            );
+                                            setApprovalMessage("");
+                                            setRejectingId(null);
+                                            setError("");
+                                          } else {
+                                            handleApprove(request);
+                                          }
+                                        }}
+                                      >
+                                        {actingId === request.id
+                                          ? "Working..."
+                                          : "Approve"}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="btn btn-danger"
+                                        disabled={
+                                          actingId === request.id
+                                        }
+                                        onClick={() => {
+                                          setRejectingId(
+                                            rejectingId === request.id
+                                              ? null
+                                              : request.id,
+                                          );
+                                          setRejectionMessage("");
+                                          setError("");
+                                        }}
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </td>
                             </tr>
 
+                            {approvingId === request.id && (
+                              <tr>
+                                <td colSpan="9">
+                                  <div className="approval-box">
+                                    <div className="form-group">
+                                      <label>
+                                        Next steps for the requester
+                                        (required)
+                                      </label>
+                                      <textarea
+                                        rows={3}
+                                        value={approvalMessage}
+                                        onChange={(e) =>
+                                          setApprovalMessage(
+                                            e.target.value,
+                                          )
+                                        }
+                                        placeholder="Explain what the requester should do next..."
+                                      />
+                                    </div>
+
+                                    <div className="form-actions">
+                                      <button
+                                        type="button"
+                                        className="btn btn-success"
+                                        disabled={
+                                          actingId === request.id ||
+                                          !approvalMessage.trim()
+                                        }
+                                        onClick={() =>
+                                          handleApprove(
+                                            request,
+                                            approvalMessage,
+                                          )
+                                        }
+                                      >
+                                        Confirm Approve
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        className="btn btn-clear"
+                                        onClick={() => {
+                                          setApprovingId(null);
+                                          setApprovalMessage("");
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+
                             {rejectingId === request.id && (
-                              <tr key={`reject-${request.id}`}>
-                                <td colSpan="7">
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: "10px",
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <input
-                                      type="text"
-                                      value={rejectionMessage}
-                                      onChange={(e) =>
-                                        setRejectionMessage(e.target.value)
-                                      }
-                                      placeholder="Enter rejection reason (required)"
-                                      style={{ flex: 1 }}
-                                    />
+                              <tr>
+                                <td colSpan="9">
+                                  <div className="rejection-box">
+                                    <div className="form-group">
+                                      <label>
+                                        Rejection reason (required)
+                                      </label>
+                                      <textarea
+                                        rows={3}
+                                        value={rejectionMessage}
+                                        onChange={(e) =>
+                                          setRejectionMessage(
+                                            e.target.value,
+                                          )
+                                        }
+                                        placeholder="Enter rejection reason (required)"
+                                      />
+                                    </div>
 
-                                    <button
-                                      type="button"
-                                      className="btn btn-danger"
-                                      disabled={actingId === request.id}
-                                      onClick={() => handleReject(request)}
-                                    >
-                                      Confirm Reject
-                                    </button>
+                                    <div className="form-actions">
+                                      <button
+                                        type="button"
+                                        className="btn btn-danger"
+                                        disabled={
+                                          actingId === request.id ||
+                                          !rejectionMessage.trim()
+                                        }
+                                        onClick={() =>
+                                          handleReject(request)
+                                        }
+                                      >
+                                        Confirm Reject
+                                      </button>
 
-                                    <button
-                                      type="button"
-                                      className="btn btn-clear"
-                                      onClick={() => {
-                                        setRejectingId(null);
-                                        setRejectionMessage("");
-                                      }}
-                                    >
-                                      Cancel
-                                    </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn-clear"
+                                        onClick={() => {
+                                          setRejectingId(null);
+                                          setRejectionMessage("");
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
                                   </div>
                                 </td>
                               </tr>
                             )}
                           </Fragment>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* =========================
-                  APPROVAL HISTORY
-                 ========================= */}
-
-              <div className="section">
-                <div className="section-header">
-                  <h2>My Approval History</h2>
-                </div>
-
-                {historyLoading && <p>Loading history...</p>}
-
-                {!historyLoading && history.length === 0 && (
-                  <p>You have not taken any approval action yet.</p>
-                )}
-
-                {!historyLoading && history.length > 0 && (
-                  <div className="table-wrapper">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>ID</th>
-                          <th>Action</th>
-                          <th>Message</th>
-                          <th>Date</th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {history.map((entry) => (
-                          <tr key={entry.id}>
-                            <td>#{entry.id}</td>
-
-                            <td>
-                              <span
-                                className={`status ${entry.action?.toLowerCase()}`}
-                              >
-                                {entry.action}
-                              </span>
-                            </td>
-
-                            <td>{entry.message}</td>
-
-                            <td>{formatDate(entry.created_at)}</td>
-                          </tr>
                         ))}
                       </tbody>
                     </table>
