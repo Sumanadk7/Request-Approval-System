@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
@@ -17,6 +17,7 @@ function AdminDashboard() {
   const isAdmin = true;
 
   const [currentPage, setCurrentPage] = useState("dashboard");
+  const [requestStatusFilter, setRequestStatusFilter] = useState("ALL");
 
   const [stats, setStats] = useState({
     total_users: 0,
@@ -51,6 +52,58 @@ function AdminDashboard() {
     fetchStats();
   }, []);
 
+  const handleNavigate = (page) => {
+    if (page === "requests") {
+      setRequestStatusFilter("ALL");
+    }
+
+    setCurrentPage(page);
+  };
+
+  const openRequests = (status) => {
+    setRequestStatusFilter(status);
+    setCurrentPage("requests");
+  };
+
+  const summaryCards = [
+    {
+      key: "users",
+      label: "Total Users",
+      value: stats.total_users,
+      page: "users",
+    },
+    {
+      key: "departments",
+      label: "Departments",
+      value: stats.total_departments,
+      page: "departments",
+    },
+    {
+      key: "request-types",
+      label: "Request Types",
+      value: stats.total_request_types,
+      page: "request-types",
+    },
+    {
+      key: "workflows",
+      label: "Workflows",
+      value: stats.total_workflows,
+      page: "workflows",
+    },
+    {
+      key: "requests",
+      label: "Total Requests",
+      value: stats.total_requests,
+      status: "ALL",
+    },
+    {
+      key: "pending",
+      label: "Pending Requests",
+      value: stats.pending_requests,
+      status: "PENDING",
+    },
+  ];
+
   return (
     <div>
       <Navbar />
@@ -59,7 +112,7 @@ function AdminDashboard() {
         <Sidebar
           role={role}
           isAdmin={isAdmin}
-          onNavigate={setCurrentPage}
+          onNavigate={handleNavigate}
           currentPage={currentPage}
         />
 
@@ -87,35 +140,41 @@ function AdminDashboard() {
               )}
 
               <div className="dashboard-cards">
-                <div className="dashboard-card">
-                  <h3>Total Users</h3>
-                  <h2>{loading ? "..." : stats.total_users}</h2>
-                </div>
+                {summaryCards.map((card) => (
+                  <button
+                    key={card.key}
+                    type="button"
+                    className="dashboard-card dashboard-card-button admin-stat-card"
+                    onClick={() => {
+                      if (card.page) {
+                        handleNavigate(card.page);
+                      } else {
+                        openRequests(card.status);
+                      }
+                    }}
+                    aria-label={`Open ${card.label}`}
+                  >
+                    <h3>{card.label}</h3>
+                    <h2>{loading ? "..." : card.value}</h2>
 
-                <div className="dashboard-card">
-                  <h3>Departments</h3>
-                  <h2>{loading ? "..." : stats.total_departments}</h2>
-                </div>
-
-                <div className="dashboard-card">
-                  <h3>Request Types</h3>
-                  <h2>{loading ? "..." : stats.total_request_types}</h2>
-                </div>
-
-                <div className="dashboard-card">
-                  <h3>Workflows</h3>
-                  <h2>{loading ? "..." : stats.total_workflows}</h2>
-                </div>
-
-                <div className="dashboard-card">
-                  <h3>Total Requests</h3>
-                  <h2>{loading ? "..." : stats.total_requests}</h2>
-                </div>
-
-                <div className="dashboard-card">
-                  <h3>Pending Requests</h3>
-                  <h2>{loading ? "..." : stats.pending_requests}</h2>
-                </div>
+                    <span className="dashboard-card-arrow">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M5 12h14" />
+                        <path d="m13 6 6 6-6 6" />
+                      </svg>
+                    </span>
+                  </button>
+                ))}
               </div>
 
               <div className="section">
@@ -139,7 +198,12 @@ function AdminDashboard() {
 
           {currentPage === "workflows" && <Workflows />}
 
-          {currentPage === "requests" && <Requests />}
+          {currentPage === "requests" && (
+            <Requests
+              key={`requests-${requestStatusFilter}`}
+              initialStatusFilter={requestStatusFilter}
+            />
+          )}
 
           {currentPage === "audit-logs" && <AuditLogs />}
 
