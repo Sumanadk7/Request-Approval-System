@@ -40,6 +40,11 @@ class WorkflowSerializer(serializers.ModelSerializer):
 
 class WorkflowAssignmentSerializer(serializers.ModelSerializer):
 
+    user_username = serializers.CharField(
+        source="user.username",
+        read_only=True
+    )
+
     class Meta:
 
         model = WorkflowAssignment
@@ -48,6 +53,7 @@ class WorkflowAssignmentSerializer(serializers.ModelSerializer):
             "id",
             "workflow",
             "user",
+            "user_username",
             "role",
             "order",
             "is_active",
