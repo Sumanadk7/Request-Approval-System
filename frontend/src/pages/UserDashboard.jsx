@@ -97,7 +97,11 @@ function UserDashboard({ role, isAdmin }) {
 
     return (
         <div>
-            <Navbar hideUsername={currentPage === "my-requests"} />
+            <Navbar
+              hideUsername={currentPage === "my-requests"}
+              isAdmin={false}
+              onNavigate={setCurrentPage}
+            />
 
             <div className="dashboard-content">
                 <Sidebar

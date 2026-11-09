@@ -2,11 +2,22 @@ import { useEffect, useState } from "react";
 import api from "../services/api";
 import RequestDetail from "./RequestDetail";
 
-function Requests() {
+const STATUS_OPTIONS = [
+  { value: "ALL", label: "All statuses" },
+  { value: "PENDING", label: "Pending" },
+  { value: "VERIFIED", label: "Verified" },
+  { value: "DECISION_REQUIRED", label: "Decision required" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "DRAFT", label: "Draft" },
+];
+
+function Requests({ initialStatusFilter = "ALL" }) {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
 
   const fetchRequests = async () => {
     try {
@@ -27,6 +38,11 @@ function Requests() {
   useEffect(() => {
     fetchRequests();
   }, []);
+
+  const filteredRequests =
+    statusFilter === "ALL"
+      ? requests
+      : requests.filter((request) => request.status === statusFilter);
 
   const renderStatus = (status) => {
     return (
@@ -63,6 +79,30 @@ function Requests() {
       <div className="section">
         <div className="section-header">
           <h2>All Requests</h2>
+
+          <div className="request-filter">
+            <label htmlFor="request-status-filter">Filter</label>
+
+            <select
+              id="request-status-filter"
+              className="request-filter-select"
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value)
+              }
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <span className="request-filter-count">
+              {filteredRequests.length}{" "}
+              {filteredRequests.length === 1 ? "request" : "requests"}
+            </span>
+          </div>
         </div>
 
         {loading && <p>Loading requests...</p>}
@@ -78,9 +118,15 @@ function Requests() {
           </p>
         )}
 
-        {!loading && !error && requests.length === 0 && <p>No requests found.</p>}
+        {!loading && !error && filteredRequests.length === 0 && (
+          <p>
+            {statusFilter === "ALL"
+              ? "No requests found."
+              : "No requests match the selected filter."}
+          </p>
+        )}
 
-        {!loading && !error && requests.length > 0 && (
+        {!loading && !error && filteredRequests.length > 0 && (
           <div className="table-wrapper">
             <table>
               <thead>
@@ -98,7 +144,7 @@ function Requests() {
               </thead>
 
               <tbody>
-                {requests.map((request, index) => (
+                {filteredRequests.map((request, index) => (
                   <tr key={request.id}>
                     <td>{index + 1}</td>
 

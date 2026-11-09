@@ -1,1074 +1,1209 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../services/api";
 
+function extractErrorMessage(error, fallback) {
+  const data = error.response?.data;
+
+  if (!data) {
+    return fallback;
+  }
+
+  if (typeof data.detail === "string") {
+    return data.detail;
+  }
+
+  for (const key of Object.keys(data)) {
+    const value = data[key];
+
+    if (typeof value === "string") {
+      return value;
+    }
+
+    if (Array.isArray(value) && value.length > 0) {
+      return String(value[0]);
+    }
+  }
+
+  return fallback;
+}
+
 function Workflows() {
-    const [workflows, setWorkflows] = useState([]);
-    const [requestTypes, setRequestTypes] = useState([]);
-    const [users, setUsers] = useState([]);
-    const [assignmentsByWorkflow, setAssignmentsByWorkflow] =
-        useState({});
+  const [workflows, setWorkflows] = useState([]);
+  const [requestTypes, setRequestTypes] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [assignmentsByWorkflow, setAssignmentsByWorkflow] =
+    useState({});
 
-    const [selectedRequestType, setSelectedRequestType] = useState("");
-    const [verifierMode, setVerifierMode] = useState("SEQUENTIAL");
-    const [approverMode, setApproverMode] = useState("SEQUENTIAL");
+  const [selectedRequestType, setSelectedRequestType] =
+    useState("");
+  const [verifierMode, setVerifierMode] = useState("SEQUENTIAL");
+  const [approverMode, setApproverMode] = useState("SEQUENTIAL");
+  const [selectedVerifierIds, setSelectedVerifierIds] = useState(
+    [],
+  );
+  const [selectedApproverIds, setSelectedApproverIds] = useState(
+    [],
+  );
 
-    const [selectedWorkflow, setSelectedWorkflow] = useState(null);
-    const [selectedUser, setSelectedUser] = useState("");
-    const [assignmentRole, setAssignmentRole] = useState("VERIFIER");
-    const [assignmentOrder, setAssignmentOrder] = useState(1);
+  const [selectedWorkflow, setSelectedWorkflow] = useState(null);
+  const [assignmentRole, setAssignmentRole] = useState("VERIFIER");
+  const [selectedUser, setSelectedUser] = useState("");
+  const [assignmentOrder, setAssignmentOrder] = useState(1);
 
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [detailLoading, setDetailLoading] = useState(false);
-    const [error, setError] = useState("");
-    const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-    const detailRef = useRef(null);
+  const detailRef = useRef(null);
 
-    const fetchAssignmentsFor = async (workflowId) => {
+  const fetchAssignmentsFor = async (workflowId) => {
+    try {
+      const response = await api.get(
+        `/workflows/${workflowId}/assignments/`,
+      );
+
+      return response.data;
+    } catch (err) {
+      console.log("Failed to load workflow assignments:", err);
+
+      return [];
+    }
+  };
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [
+        workflowResponse,
+        requestTypeResponse,
+        userResponse,
+      ] = await Promise.all([
+        api.get("/workflows/"),
+        api.get("/request-types/"),
+        api.get("/accounts/admin-users/"),
+      ]);
+
+      const workflowList = workflowResponse.data;
+
+      setWorkflows(workflowList);
+      setRequestTypes(requestTypeResponse.data);
+      setUsers(userResponse.data);
+
+      const assignmentEntries = await Promise.all(
+        workflowList.map(async (workflow) => [
+          workflow.id,
+          await fetchAssignmentsFor(workflow.id),
+        ]),
+      );
+
+      setAssignmentsByWorkflow(
+        Object.fromEntries(assignmentEntries),
+      );
+    } catch (err) {
+      console.log("Failed to load workflow data:", err);
+      setError("Failed to load workflow data.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const openWorkflow = async (workflow, shouldScroll = true) => {
+    setSelectedWorkflow(workflow);
+    setDetailLoading(true);
+
+    try {
+      const [detailResponse, assignmentResponse] = await Promise.all(
+        [
+          api.get(`/workflows/${workflow.id}/`),
+          api.get(`/workflows/${workflow.id}/assignments/`),
+        ],
+      );
+
+      setSelectedWorkflow(detailResponse.data);
+
+      setAssignmentsByWorkflow((previous) => ({
+        ...previous,
+        [workflow.id]: assignmentResponse.data,
+      }));
+    } catch (err) {
+      console.log("Failed to load workflow details:", err);
+      setError("Failed to load workflow details.");
+    } finally {
+      setDetailLoading(false);
+    }
+
+    if (shouldScroll) {
+      setTimeout(() => {
+        detailRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 80);
+    }
+  };
+
+  const refreshSelectedWorkflow = async () => {
+    if (!selectedWorkflow) {
+      return;
+    }
+
+    await openWorkflow(selectedWorkflow, false);
+    await fetchData();
+  };
+
+  const toggleAssignmentSelection = (role, userId) => {
+    if (role === "VERIFIER") {
+      setSelectedVerifierIds((previous) =>
+        previous.includes(userId)
+          ? previous.filter((id) => id !== userId)
+          : [...previous, userId],
+      );
+    } else {
+      setSelectedApproverIds((previous) =>
+        previous.includes(userId)
+          ? previous.filter((id) => id !== userId)
+          : [...previous, userId],
+      );
+    }
+  };
+
+  const handleCreateWorkflow = async (e) => {
+    e.preventDefault();
+
+    setMessage("");
+    setError("");
+
+    if (!selectedRequestType) {
+      setError("Please select a request type.");
+      return;
+    }
+
+    if (selectedVerifierIds.length === 0) {
+      setError("Please select at least one verifier.");
+      return;
+    }
+
+    if (selectedApproverIds.length === 0) {
+      setError("Please select at least one approver.");
+      return;
+    }
+
+    let createdWorkflowId = null;
+
+    try {
+      setSaving(true);
+
+      const response = await api.post("/workflows/", {
+        request_type: selectedRequestType,
+        verifier_mode: verifierMode,
+        approver_mode: approverMode,
+      });
+
+      createdWorkflowId = response.data.id;
+
+      const assignmentPayloads = [
+        ...selectedVerifierIds.map((userId, index) => ({
+          user: userId,
+          role: "VERIFIER",
+          order: index + 1,
+        })),
+        ...selectedApproverIds.map((userId, index) => ({
+          user: userId,
+          role: "APPROVER",
+          order: index + 1,
+        })),
+      ];
+
+      await Promise.all(
+        assignmentPayloads.map((payload) =>
+          api.post(
+            `/workflows/${createdWorkflowId}/assignments/`,
+            payload,
+          ),
+        ),
+      );
+
+      setMessage(
+        `Workflow created with ${selectedVerifierIds.length} verifier(s) and ${selectedApproverIds.length} approver(s).`,
+      );
+
+      setSelectedRequestType("");
+      setVerifierMode("SEQUENTIAL");
+      setApproverMode("SEQUENTIAL");
+      setSelectedVerifierIds([]);
+      setSelectedApproverIds([]);
+
+      await fetchData();
+      await openWorkflow(response.data);
+    } catch (err) {
+      console.log("Failed to create workflow:", err);
+
+      if (createdWorkflowId) {
         try {
-            const response = await api.get(
-                `/workflows/${workflowId}/assignments/`
-            );
-
-            return response.data;
-        } catch (error) {
-            console.log(
-                "Failed to load workflow assignments:",
-                error
-            );
-
-            return [];
-        }
-    };
-
-    const fetchData = async () => {
-        try {
-            setLoading(true);
-            setError("");
-
-            const [
-                workflowResponse,
-                requestTypeResponse,
-                userResponse,
-            ] = await Promise.all([
-                api.get("/workflows/"),
-                api.get("/request-types/"),
-                api.get("/accounts/admin-users/"),
-            ]);
-
-            const workflowList = workflowResponse.data;
-
-            setWorkflows(workflowList);
-            setRequestTypes(requestTypeResponse.data);
-            setUsers(userResponse.data);
-
-            const assignmentEntries = await Promise.all(
-                workflowList.map(async (workflow) => [
-                    workflow.id,
-                    await fetchAssignmentsFor(workflow.id),
-                ])
-            );
-
-            setAssignmentsByWorkflow(
-                Object.fromEntries(assignmentEntries)
-            );
-        } catch (error) {
-            console.log("Failed to load workflow data:", error);
-            setError("Failed to load workflow data.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    const openWorkflow = async (workflow, shouldScroll = true) => {
-        setSelectedWorkflow(workflow);
-        setDetailLoading(true);
-
-        try {
-            const [detailResponse, assignmentResponse] =
-                await Promise.all([
-                    api.get(`/workflows/${workflow.id}/`),
-                    api.get(
-                        `/workflows/${workflow.id}/assignments/`
-                    ),
-                ]);
-
-            setSelectedWorkflow(detailResponse.data);
-
-            setAssignmentsByWorkflow((previous) => ({
-                ...previous,
-                [workflow.id]: assignmentResponse.data,
-            }));
-        } catch (error) {
-            console.log("Failed to load workflow details:", error);
-            setError("Failed to load workflow details.");
-        } finally {
-            setDetailLoading(false);
+          await api.delete(`/workflows/${createdWorkflowId}/`);
+        } catch (cleanupError) {
+          console.log(
+            "Failed to remove partial workflow:",
+            cleanupError,
+          );
         }
 
-        if (shouldScroll) {
-            setTimeout(() => {
-                detailRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                });
-            }, 80);
-        }
-    };
-
-    const refreshSelectedWorkflow = async () => {
-        if (!selectedWorkflow) {
-            return;
-        }
-
-        await openWorkflow(selectedWorkflow, false);
         await fetchData();
-    };
+      }
 
-    const handleCreateWorkflow = async (e) => {
-        e.preventDefault();
+      setError(
+        extractErrorMessage(err, "Failed to create workflow."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
-        setMessage("");
-        setError("");
+  const handleAddAssignment = async (e) => {
+    e.preventDefault();
 
-        if (!selectedRequestType) {
-            setError("Please select a request type.");
-            return;
-        }
+    setMessage("");
+    setError("");
 
-        try {
-            setSaving(true);
+    if (!selectedWorkflow) {
+      setError("Please select a workflow first.");
+      return;
+    }
 
-            const response = await api.post("/workflows/", {
-                request_type: selectedRequestType,
-                verifier_mode: verifierMode,
-                approver_mode: approverMode,
-            });
+    if (!selectedUser) {
+      setError("Please select a user.");
+      return;
+    }
 
-            setMessage("Workflow created successfully.");
+    try {
+      setSaving(true);
 
-            setSelectedRequestType("");
-            setVerifierMode("SEQUENTIAL");
-            setApproverMode("SEQUENTIAL");
+      await api.post(
+        `/workflows/${selectedWorkflow.id}/assignments/`,
+        {
+          user: selectedUser,
+          role: assignmentRole,
+          order: Number(assignmentOrder),
+        },
+      );
 
-            await fetchData();
-            await openWorkflow(response.data);
-        } catch (error) {
-            console.log("Failed to create workflow:", error);
+      setMessage("Workflow assignment added successfully.");
 
-            const detail =
-                error.response?.data?.detail ||
-                "Failed to create workflow.";
+      setSelectedUser("");
+      setAssignmentRole("VERIFIER");
+      setAssignmentOrder(1);
 
-            setError(detail);
-        } finally {
-            setSaving(false);
-        }
-    };
+      await refreshSelectedWorkflow();
+    } catch (err) {
+      console.log("Failed to add workflow assignment:", err);
 
-    const handleAddAssignment = async (e) => {
-        e.preventDefault();
+      setError(
+        extractErrorMessage(
+          err,
+          "Failed to add workflow assignment.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
-        setMessage("");
-        setError("");
+  const handleRemoveAssignment = async (assignment) => {
+    const name = getAssignmentUserName(assignment);
+    const roleLabel = assignment.role.toLowerCase();
 
-        if (!selectedWorkflow) {
-            setError("Please select a workflow first.");
-            return;
-        }
+    const confirmed = window.confirm(
+      `Remove ${name} (${roleLabel}, order ${assignment.order}) from this workflow?`,
+    );
 
-        if (!selectedUser) {
-            setError("Please select a user.");
-            return;
-        }
+    if (!confirmed) {
+      return;
+    }
 
-        try {
-            setSaving(true);
+    setMessage("");
+    setError("");
 
-            await api.post(
-                `/workflows/${selectedWorkflow.id}/assignments/`,
-                {
-                    user: selectedUser,
-                    role: assignmentRole,
-                    order: Number(assignmentOrder),
-                }
-            );
+    try {
+      setSaving(true);
 
-            setMessage("Workflow assignment added successfully.");
+      await api.patch(
+        `/workflows/assignments/${assignment.id}/remove/`,
+      );
 
-            setSelectedUser("");
-            setAssignmentRole("VERIFIER");
-            setAssignmentOrder(1);
+      setMessage(
+        `${name} removed from the workflow successfully.`,
+      );
 
-            await refreshSelectedWorkflow();
-        } catch (error) {
-            console.log(
-                "Failed to add workflow assignment:",
-                error
-            );
+      await refreshSelectedWorkflow();
+    } catch (err) {
+      console.log(
+        "Failed to remove workflow assignment:",
+        err,
+      );
 
-            const detail =
-                error.response?.data?.detail ||
-                "Failed to add workflow assignment.";
+      setError(
+        extractErrorMessage(
+          err,
+          "Failed to remove workflow assignment.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
-            setError(detail);
-        } finally {
-            setSaving(false);
-        }
-    };
+  const handleDeleteWorkflow = async (workflow) => {
+    const confirmed = window.confirm(
+      `Delete the ${getRequestTypeName(workflow)} workflow permanently? This cannot be undone.`,
+    );
 
-    const handleActivate = async (workflow) => {
-        try {
-            setMessage("");
-            setError("");
+    if (!confirmed) {
+      return;
+    }
 
-            await api.patch(
-                `/workflows/${workflow.id}/`,
-                {
-                    is_active: true,
-                }
-            );
+    setMessage("");
+    setError("");
 
-            setMessage("Workflow activated.");
-            await fetchData();
+    try {
+      setSaving(true);
 
-            if (selectedWorkflow?.id === workflow.id) {
-                await openWorkflow(
-                    { ...selectedWorkflow, is_active: true },
-                    false
-                );
-            }
-        } catch (error) {
-            console.log("Failed to activate workflow:", error);
-            setError("Failed to activate workflow.");
-        }
-    };
+      await api.delete(`/workflows/${workflow.id}/`);
 
-    const handleDeactivate = async (workflow) => {
-        try {
-            setMessage("");
-            setError("");
+      setMessage("Workflow deleted successfully.");
 
-            await api.patch(
-                `/workflows/${workflow.id}/`,
-                {
-                    is_active: false,
-                }
-            );
+      if (selectedWorkflow?.id === workflow.id) {
+        setSelectedWorkflow(null);
+      }
 
-            setMessage("Workflow deactivated.");
-            await fetchData();
+      await fetchData();
+    } catch (err) {
+      console.log("Failed to delete workflow:", err);
 
-            if (selectedWorkflow?.id === workflow.id) {
-                await openWorkflow(
-                    { ...selectedWorkflow, is_active: false },
-                    false
-                );
-            }
-        } catch (error) {
-            console.log(
-                "Failed to deactivate workflow:",
-                error
-            );
+      setError(
+        extractErrorMessage(err, "Failed to delete workflow."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
-            setError("Failed to deactivate workflow.");
-        }
-    };
+  const handleActivate = async (workflow) => {
+    try {
+      setMessage("");
+      setError("");
 
-    const getUserName = (userId) => {
-        const user = users.find(
-            (item) => item.id === userId
+      await api.patch(`/workflows/${workflow.id}/`, {
+        is_active: true,
+      });
+
+      setMessage("Workflow activated.");
+      await fetchData();
+
+      if (selectedWorkflow?.id === workflow.id) {
+        await openWorkflow(
+          { ...selectedWorkflow, is_active: true },
+          false,
         );
+      }
+    } catch (err) {
+      console.log("Failed to activate workflow:", err);
+      setError(
+        extractErrorMessage(err, "Failed to activate workflow."),
+      );
+    }
+  };
 
-        return user ? user.username : `User #${userId}`;
-    };
+  const handleDeactivate = async (workflow) => {
+    try {
+      setMessage("");
+      setError("");
 
-    const getAssignmentUserName = (assignment) => {
-        return (
-            assignment.user_username ||
-            getUserName(assignment.user)
+      await api.patch(`/workflows/${workflow.id}/`, {
+        is_active: false,
+      });
+
+      setMessage("Workflow deactivated.");
+      await fetchData();
+
+      if (selectedWorkflow?.id === workflow.id) {
+        await openWorkflow(
+          { ...selectedWorkflow, is_active: false },
+          false,
         );
-    };
+      }
+    } catch (err) {
+      console.log("Failed to deactivate workflow:", err);
 
-    const getRequestTypeName = (workflow) => {
-        if (!workflow) {
-            return "";
+      setError(
+        extractErrorMessage(err, "Failed to deactivate workflow."),
+      );
+    }
+  };
+
+  const getUserName = (userId) => {
+    const user = users.find((item) => item.id === userId);
+
+    return user ? user.username : `User #${userId}`;
+  };
+
+  const getAssignmentUserName = (assignment) => {
+    return (
+      assignment.user_username ||
+      getUserName(assignment.user)
+    );
+  };
+
+  const getRequestTypeName = (workflow) => {
+    if (!workflow) {
+      return "";
+    }
+
+    const requestType = requestTypes.find(
+      (item) => item.id === workflow.request_type,
+    );
+
+    return requestType
+      ? requestType.name
+      : `Request Type #${workflow.request_type}`;
+  };
+
+  const getAssignments = (workflow) => {
+    if (!workflow) {
+      return [];
+    }
+
+    return assignmentsByWorkflow[workflow.id] || [];
+  };
+
+  const getActiveAssignments = (workflow) => {
+    return getAssignments(workflow).filter(
+      (assignment) => assignment.is_active,
+    );
+  };
+
+  const getChain = (workflow, role) => {
+    return getActiveAssignments(workflow)
+      .filter((assignment) => assignment.role === role)
+      .sort((a, b) => {
+        if (a.order !== b.order) {
+          return a.order - b.order;
         }
 
-        const requestType = requestTypes.find(
-            (item) => item.id === workflow.request_type
-        );
+        return new Date(a.created_at) - new Date(b.created_at);
+      });
+  };
 
-        return requestType
-            ? requestType.name
-            : `Request Type #${workflow.request_type}`;
-    };
+  const formatDate = (value) => {
+    if (!value) {
+      return "-";
+    }
 
-    const getAssignments = (workflow) => {
-        if (!workflow) {
-            return [];
-        }
+    return new Date(value).toLocaleString();
+  };
 
-        return assignmentsByWorkflow[workflow.id] || [];
-    };
+  const buildHistory = (workflow) => {
+    if (!workflow) {
+      return [];
+    }
 
-    const getActiveAssignments = (workflow) => {
-        return getAssignments(workflow).filter(
-            (assignment) => assignment.is_active
-        );
-    };
+    const history = [];
 
-    const getChain = (workflow, role) => {
-        return getActiveAssignments(workflow)
-            .filter((assignment) => assignment.role === role)
-            .sort((a, b) => {
-                if (a.order !== b.order) {
-                    return a.order - b.order;
-                }
+    history.push({
+      key: `created-${workflow.id}`,
+      type: "created",
+      event: "Workflow Created",
+      detail:
+        `${getRequestTypeName(workflow)} - ` +
+        `Verifier mode: ${workflow.verifier_mode}, ` +
+        `Approver mode: ${workflow.approver_mode}`,
+      at: workflow.created_at,
+    });
 
-                return new Date(a.created_at) - new Date(b.created_at);
-            });
-    };
-
-    const formatDate = (value) => {
-        if (!value) {
-            return "—";
-        }
-
-        return new Date(value).toLocaleString();
-    };
-
-    const buildHistory = (workflow) => {
-        if (!workflow) {
-            return [];
-        }
-
-        const history = [];
-
+    getAssignments(workflow)
+      .filter((assignment) => !assignment.is_active)
+      .forEach((assignment) => {
         history.push({
-            key: `created-${workflow.id}`,
-            type: "created",
-            event: "Workflow Created",
-            detail:
-                `${getRequestTypeName(workflow)} — ` +
-                `Verifier mode: ${workflow.verifier_mode}, ` +
-                `Approver mode: ${workflow.approver_mode}`,
-            at: workflow.created_at,
+          key: `assignment-${assignment.id}`,
+          type: "removed",
+          event: "Assignment Inactive",
+          detail:
+            `${getAssignmentUserName(assignment)} - ` +
+            `${assignment.role} (Order ${assignment.order})`,
+          at: assignment.created_at,
         });
+      });
 
-        getAssignments(workflow).forEach((assignment) => {
-            history.push({
-                key: `assignment-${assignment.id}`,
-                type: assignment.is_active
-                    ? "added"
-                    : "removed",
-                event: assignment.is_active
-                    ? "Assignment Added"
-                    : "Assignment Inactive",
-                detail:
-                    `${getAssignmentUserName(assignment)} — ` +
-                    `${assignment.role} (Order ${assignment.order})`,
-                at: assignment.created_at,
-            });
-        });
+    const updatedAt = new Date(workflow.updated_at).getTime();
 
-        const createdAt = new Date(workflow.created_at).getTime();
-        const updatedAt = new Date(workflow.updated_at).getTime();
+    history.push({
+      key: `status-${workflow.id}`,
+      type: workflow.is_active ? "added" : "removed",
+      event: workflow.is_active
+        ? "Workflow Active"
+        : "Workflow Inactive",
+      detail: "Current workflow status.",
+      at: updatedAt,
+    });
 
-        if (updatedAt - createdAt > 1000) {
-            history.push({
-                key: `status-${workflow.id}`,
-                type: workflow.is_active
-                    ? "added"
-                    : "removed",
-                event: workflow.is_active
-                    ? "Workflow Activated"
-                    : "Workflow Deactivated",
-                detail: "Workflow status was updated.",
-                at: workflow.updated_at,
-            });
-        }
+    return history.sort(
+      (a, b) => new Date(b.at) - new Date(a.at),
+    );
+  };
 
-        return history.sort(
-            (a, b) => new Date(b.at) - new Date(a.at)
-        );
-    };
+  const renderChain = (workflow, role) => {
+    const chain = getChain(workflow, role);
 
-    const renderChain = (workflow, role) => {
-        const chain = getChain(workflow, role);
+    if (chain.length === 0) {
+      return (
+        <span className="workflow-chip empty">
+          No {role.toLowerCase()} assigned
+        </span>
+      );
+    }
 
-        if (chain.length === 0) {
-            return (
-                <span className="workflow-chip empty">
-                    No {role.toLowerCase()} assigned
-                </span>
-            );
-        }
+    return chain.map((assignment) => (
+      <span
+        key={assignment.id}
+        className={`workflow-chip ${role.toLowerCase()}`}
+      >
+        <span className="chip-order">
+          {workflow?.verifier_mode === "PARALLEL" &&
+          role === "VERIFIER"
+            ? "•"
+            : workflow?.approver_mode === "PARALLEL" &&
+                role === "APPROVER"
+              ? "•"
+              : assignment.order}
+        </span>
 
-        return chain.map((assignment) => (
-            <span
-                key={assignment.id}
-                className={`workflow-chip ${role.toLowerCase()}`}
-            >
-                <span className="chip-order">
-                    {assignment.order}
-                </span>
+        {getAssignmentUserName(assignment)}
+      </span>
+    ));
+  };
 
-                {getAssignmentUserName(assignment)}
-            </span>
-        ));
-    };
+  const renderSelectionPanel = (role) => {
+    const isVerifier = role === "VERIFIER";
+    const selectedIds = isVerifier
+      ? selectedVerifierIds
+      : selectedApproverIds;
+    const mode = isVerifier ? verifierMode : approverMode;
+    const roleClass = isVerifier ? "verifier" : "approver";
+
+    const roleUsers = users.filter(
+      (user) =>
+        user.role === role &&
+        user.is_active !== false,
+    );
 
     return (
-        <>
-            <div className="page-title">
-                <h1>Workflows</h1>
-                <p>
-                    Configure request approval workflows,
-                    verification and approval assignments.
-                </p>
+      <div className="workflow-select-panel">
+        <div className="workflow-select-head">
+          <h4>Select {isVerifier ? "Verifiers" : "Approvers"}</h4>
+
+          <span className="workflow-select-hint">
+            {mode === "PARALLEL"
+              ? "Parallel - order does not matter."
+              : "Sequential - selected order becomes the step order."}
+          </span>
+        </div>
+
+        <div className="workflow-select-grid">
+          {roleUsers.length === 0 && (
+            <span className="workflow-chip empty">
+              No active {roleClass} users found
+            </span>
+          )}
+
+          {roleUsers.map((user, index) => {
+            const isSelected = selectedIds.includes(user.id);
+            const selectionOrder = selectedIds.indexOf(user.id) + 1;
+
+            return (
+              <button
+                key={user.id}
+                type="button"
+                className={`workflow-select-chip ${roleClass} ${
+                  isSelected ? "selected" : ""
+                }`}
+                onClick={() =>
+                  toggleAssignmentSelection(role, user.id)
+                }
+              >
+                <span className="chip-order">
+                  {isSelected
+                    ? mode === "PARALLEL"
+                      ? "•"
+                      : selectionOrder
+                    : index === 0
+                      ? "+"
+                      : "+"}
+                </span>
+
+                {user.username}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="page-title">
+        <h1>Workflows</h1>
+        <p>
+          Configure request approval workflows,
+          verification and approval assignments.
+        </p>
+      </div>
+
+      {message && (
+        <div className="alert alert-success">{message}</div>
+      )}
+
+      {error && (
+        <div className="alert alert-error">{error}</div>
+      )}
+
+      <div className="section">
+        <div className="section-header">
+          <h2>Create Workflow</h2>
+        </div>
+
+        <form onSubmit={handleCreateWorkflow}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label>Request Type</label>
+
+              <select
+                value={selectedRequestType}
+                onChange={(e) =>
+                  setSelectedRequestType(e.target.value)
+                }
+              >
+                <option value="">Select Request Type</option>
+
+                {requestTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {message && (
-                <div
-                    style={{
-                        marginBottom: "20px",
-                        padding: "12px 15px",
-                        border: "1px solid #86efac",
-                        background: "#f0fdf4",
-                        color: "#166534",
-                        borderRadius: "5px",
-                    }}
-                >
-                    {message}
-                </div>
-            )}
+            <div className="form-group">
+              <label>Verifier Mode</label>
 
-            {error && (
-                <div
-                    style={{
-                        marginBottom: "20px",
-                        padding: "12px 15px",
-                        border: "1px solid #fca5a5",
-                        background: "#fef2f2",
-                        color: "#991b1b",
-                        borderRadius: "5px",
-                    }}
-                >
-                    {error}
-                </div>
-            )}
+              <select
+                value={verifierMode}
+                onChange={(e) => setVerifierMode(e.target.value)}
+              >
+                <option value="SEQUENTIAL">Sequential</option>
 
-            <div className="section">
-                <div className="section-header">
-                    <h2>Create Workflow</h2>
-                </div>
+                <option value="PARALLEL">Parallel</option>
+              </select>
+            </div>
 
-                <form onSubmit={handleCreateWorkflow}>
-                    <div className="form-grid">
-                        <div className="form-group">
-                            <label>Request Type</label>
+            <div className="form-group">
+              <label>Approver Mode</label>
 
-                            <select
-                                value={selectedRequestType}
-                                onChange={(e) =>
-                                    setSelectedRequestType(
-                                        e.target.value
-                                    )
-                                }
-                            >
-                                <option value="">
-                                    Select Request Type
-                                </option>
+              <select
+                value={approverMode}
+                onChange={(e) => setApproverMode(e.target.value)}
+              >
+                <option value="SEQUENTIAL">Sequential</option>
 
-                                {requestTypes.map((type) => (
-                                    <option
-                                        key={type.id}
-                                        value={type.id}
-                                    >
-                                        {type.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                <option value="PARALLEL">Parallel</option>
+              </select>
+            </div>
+          </div>
 
-                        <div className="form-group">
-                            <label>
-                                Verifier Mode
-                            </label>
+          {renderSelectionPanel("VERIFIER")}
 
-                            <select
-                                value={verifierMode}
-                                onChange={(e) =>
-                                    setVerifierMode(
-                                        e.target.value
-                                    )
-                                }
-                            >
-                                <option value="SEQUENTIAL">
-                                    Sequential
-                                </option>
+          {renderSelectionPanel("APPROVER")}
 
-                                <option value="PARALLEL">
-                                    Parallel
-                                </option>
-                            </select>
-                        </div>
+          <div className="form-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={saving}
+            >
+              {saving
+                ? "Creating..."
+                : "Create Workflow"}
+            </button>
+          </div>
+        </form>
+      </div>
 
-                        <div className="form-group">
-                            <label>
-                                Approver Mode
-                            </label>
+      <div className="section">
+        <div className="section-header">
+          <h2>Workflow List</h2>
+        </div>
 
-                            <select
-                                value={approverMode}
-                                onChange={(e) =>
-                                    setApproverMode(
-                                        e.target.value
-                                    )
-                                }
-                            >
-                                <option value="SEQUENTIAL">
-                                    Sequential
-                                </option>
+        {loading ? (
+          <p>Loading workflows...</p>
+        ) : workflows.length === 0 ? (
+          <p>No workflows found.</p>
+        ) : (
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>S.N</th>
+                  <th>Request Type</th>
+                  <th>Verifiers</th>
+                  <th>Approvers</th>
+                  <th>Modes</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
 
-                                <option value="PARALLEL">
-                                    Parallel
-                                </option>
-                            </select>
-                        </div>
-                    </div>
+              <tbody>
+                {workflows.map((workflow, index) => (
+                  <tr key={workflow.id}>
+                    <td>{index + 1}</td>
 
-                    <div className="form-actions">
+                    <td>{getRequestTypeName(workflow)}</td>
+
+                    <td>
+                      <div className="workflow-chain">
+                        {renderChain(workflow, "VERIFIER")}
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="workflow-chain">
+                        {renderChain(workflow, "APPROVER")}
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="workflow-modes">
+                        <span>V: {workflow.verifier_mode}</span>
+
+                        <span>A: {workflow.approver_mode}</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <span
+                        className={`status ${
+                          workflow.is_active
+                            ? "approved"
+                            : "rejected"
+                        }`}
+                      >
+                        {workflow.is_active
+                          ? "Active"
+                          : "Inactive"}
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="table-actions">
                         <button
-                            type="submit"
-                            className="btn btn-primary"
-                            disabled={saving}
+                          type="button"
+                          className="btn btn-info"
+                          onClick={() => openWorkflow(workflow)}
                         >
-                            {saving
-                                ? "Creating..."
-                                : "Create Workflow"}
+                          Manage
                         </button>
-                    </div>
-                </form>
-            </div>
 
-            <div className="section">
-                <div className="section-header">
-                    <h2>Workflow List</h2>
-                </div>
-
-                {loading ? (
-                    <p>Loading workflows...</p>
-                ) : workflows.length === 0 ? (
-                    <p>No workflows found.</p>
-                ) : (
-                    <div className="table-wrapper">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Request Type</th>
-                                    <th>Verifiers</th>
-                                    <th>Approvers</th>
-                                    <th>Modes</th>
-                                    <th>Status</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                {workflows.map((workflow) => (
-                                    <tr key={workflow.id}>
-                                        <td>
-                                            #{workflow.id}
-                                        </td>
-
-                                        <td>
-                                            {getRequestTypeName(
-                                                workflow
-                                            )}
-                                        </td>
-
-                                        <td>
-                                            <div className="workflow-chain">
-                                                {renderChain(
-                                                    workflow,
-                                                    "VERIFIER"
-                                                )}
-                                            </div>
-                                        </td>
-
-                                        <td>
-                                            <div className="workflow-chain">
-                                                {renderChain(
-                                                    workflow,
-                                                    "APPROVER"
-                                                )}
-                                            </div>
-                                        </td>
-
-                                        <td>
-                                            <div className="workflow-modes">
-                                                <span>
-                                                    V:{" "}
-                                                    {
-                                                        workflow.verifier_mode
-                                                    }
-                                                </span>
-
-                                                <span>
-                                                    A:{" "}
-                                                    {
-                                                        workflow.approver_mode
-                                                    }
-                                                </span>
-                                            </div>
-                                        </td>
-
-                                        <td>
-                                            <span
-                                                className={`status ${
-                                                    workflow.is_active
-                                                        ? "approved"
-                                                        : "rejected"
-                                                }`}
-                                            >
-                                                {workflow.is_active
-                                                    ? "Active"
-                                                    : "Inactive"}
-                                            </span>
-                                        </td>
-
-                                        <td>
-                                            <button
-                                                className="btn btn-info"
-                                                onClick={() =>
-                                                    openWorkflow(
-                                                        workflow
-                                                    )
-                                                }
-                                            >
-                                                View / Manage
-                                            </button>
-
-                                            {workflow.is_active ? (
-                                                <button
-                                                    className="btn btn-danger"
-                                                    style={{
-                                                        marginLeft:
-                                                            "8px",
-                                                    }}
-                                                    onClick={() =>
-                                                        handleDeactivate(
-                                                            workflow
-                                                        )
-                                                    }
-                                                >
-                                                    Deactivate
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    className="btn btn-success"
-                                                    style={{
-                                                        marginLeft:
-                                                            "8px",
-                                                    }}
-                                                    onClick={() =>
-                                                        handleActivate(
-                                                            workflow
-                                                        )
-                                                    }
-                                                >
-                                                    Activate
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {selectedWorkflow && (
-                <div className="section workflow-detail" ref={detailRef}>
-                    <div className="section-header">
-                        <h2>
-                            Workflow Details #
-                            {selectedWorkflow.id}{" "}
-                            <span
-                                className={`status ${
-                                    selectedWorkflow.is_active
-                                        ? "approved"
-                                        : "rejected"
-                                }`}
-                            >
-                                {selectedWorkflow.is_active
-                                    ? "Active"
-                                    : "Inactive"}
-                            </span>
-                        </h2>
-
-                        <button
+                        {workflow.is_active ? (
+                          <button
+                            type="button"
                             className="btn btn-clear"
                             onClick={() =>
-                                setSelectedWorkflow(null)
+                              handleDeactivate(workflow)
                             }
+                          >
+                            Deactivate
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-success"
+                            onClick={() =>
+                              handleActivate(workflow)
+                            }
+                          >
+                            Activate
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          onClick={() =>
+                            handleDeleteWorkflow(workflow)
+                          }
                         >
-                            Close
+                          Delete
                         </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {selectedWorkflow && (
+        <div
+          className="section workflow-detail"
+          ref={detailRef}
+        >
+          <div className="section-header">
+            <h2>
+              {getRequestTypeName(selectedWorkflow)}{" "}
+              <span
+                className={`status ${
+                  selectedWorkflow.is_active
+                    ? "approved"
+                    : "rejected"
+                }`}
+              >
+                {selectedWorkflow.is_active
+                  ? "Active"
+                  : "Inactive"}
+              </span>
+            </h2>
+
+            <div className="table-actions">
+              {selectedWorkflow.is_active ? (
+                <button
+                  type="button"
+                  className="btn btn-clear"
+                  onClick={() =>
+                    handleDeactivate(selectedWorkflow)
+                  }
+                >
+                  Deactivate
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-success"
+                  onClick={() =>
+                    handleActivate(selectedWorkflow)
+                  }
+                >
+                  Activate
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() =>
+                  handleDeleteWorkflow(selectedWorkflow)
+                }
+              >
+                Delete
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-clear"
+                onClick={() => setSelectedWorkflow(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          {detailLoading ? (
+            <p>Loading workflow details...</p>
+          ) : (
+            <>
+              <div className="workflow-info-grid">
+                <div className="workflow-info-item">
+                  <span>Request Type</span>
+
+                  <strong>
+                    {getRequestTypeName(selectedWorkflow)}
+                  </strong>
+                </div>
+
+                <div className="workflow-info-item">
+                  <span>Verifier Mode</span>
+
+                  <strong>
+                    {selectedWorkflow.verifier_mode}
+                  </strong>
+                </div>
+
+                <div className="workflow-info-item">
+                  <span>Approver Mode</span>
+
+                  <strong>
+                    {selectedWorkflow.approver_mode}
+                  </strong>
+                </div>
+
+                <div className="workflow-info-item">
+                  <span>Created At</span>
+
+                  <strong>
+                    {formatDate(
+                      selectedWorkflow.created_at,
+                    )}
+                  </strong>
+                </div>
+
+                <div className="workflow-info-item">
+                  <span>Last Updated</span>
+
+                  <strong>
+                    {formatDate(
+                      selectedWorkflow.updated_at,
+                    )}
+                  </strong>
+                </div>
+
+                <div className="workflow-info-item">
+                  <span>Status</span>
+
+                  <strong>
+                    {selectedWorkflow.is_active
+                      ? "Active"
+                      : "Inactive"}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="workflow-assigned">
+                <div>
+                  <h3>Assigned Verifiers</h3>
+
+                  <div className="workflow-chain">
+                    {renderChain(
+                      selectedWorkflow,
+                      "VERIFIER",
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h3>Assigned Approvers</h3>
+
+                  <div className="workflow-chain">
+                    {renderChain(
+                      selectedWorkflow,
+                      "APPROVER",
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="workflow-manage-form">
+                <h3>Add Verifier / Approver</h3>
+
+                <form onSubmit={handleAddAssignment}>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label>Role</label>
+
+                      <select
+                        value={assignmentRole}
+                        onChange={(e) =>
+                          setAssignmentRole(e.target.value)
+                        }
+                      >
+                        <option value="VERIFIER">
+                          Verifier
+                        </option>
+
+                        <option value="APPROVER">
+                          Approver
+                        </option>
+                      </select>
                     </div>
 
-                    {detailLoading ? (
-                        <p>Loading workflow details...</p>
-                    ) : (
-                        <>
-                            <div className="workflow-info-grid">
-                                <div className="workflow-info-item">
-                                    <span>Request Type</span>
+                    <div className="form-group">
+                      <label>User</label>
 
-                                    <strong>
-                                        {getRequestTypeName(
-                                            selectedWorkflow
-                                        )}
-                                    </strong>
-                                </div>
+                      <select
+                        value={selectedUser}
+                        onChange={(e) =>
+                          setSelectedUser(e.target.value)
+                        }
+                      >
+                        <option value="">Select User</option>
 
-                                <div className="workflow-info-item">
-                                    <span>Verifier Mode</span>
-
-                                    <strong>
-                                        {
-                                            selectedWorkflow.verifier_mode
-                                        }
-                                    </strong>
-                                </div>
-
-                                <div className="workflow-info-item">
-                                    <span>Approver Mode</span>
-
-                                    <strong>
-                                        {
-                                            selectedWorkflow.approver_mode
-                                        }
-                                    </strong>
-                                </div>
-
-                                <div className="workflow-info-item">
-                                    <span>Created At</span>
-
-                                    <strong>
-                                        {formatDate(
-                                            selectedWorkflow.created_at
-                                        )}
-                                    </strong>
-                                </div>
-
-                                <div className="workflow-info-item">
-                                    <span>Last Updated</span>
-
-                                    <strong>
-                                        {formatDate(
-                                            selectedWorkflow.updated_at
-                                        )}
-                                    </strong>
-                                </div>
-
-                                <div className="workflow-info-item">
-                                    <span>Status</span>
-
-                                    <strong>
-                                        {selectedWorkflow.is_active
-                                            ? "Active"
-                                            : "Inactive"}
-                                    </strong>
-                                </div>
-                            </div>
-
-                            <div className="workflow-assigned">
-                                <div>
-                                    <h3>Assigned Verifiers</h3>
-
-                                    <div className="workflow-chain">
-                                        {renderChain(
-                                            selectedWorkflow,
-                                            "VERIFIER"
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <h3>Assigned Approvers</h3>
-
-                                    <div className="workflow-chain">
-                                        {renderChain(
-                                            selectedWorkflow,
-                                            "APPROVER"
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div
-                                style={{
-                                    marginTop: "24px",
-                                    marginBottom: "20px",
-                                }}
+                        {users
+                          .filter(
+                            (user) =>
+                              user.role ===
+                                assignmentRole &&
+                              user.is_active !== false,
+                          )
+                          .map((user) => (
+                            <option
+                              key={user.id}
+                              value={user.id}
                             >
-                                <h3>
-                                    Add Verifier / Approver
-                                </h3>
+                              {user.username}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
 
-                                <form
-                                    onSubmit={handleAddAssignment}
+                    <div className="form-group">
+                      <label>Order</label>
+
+                      <input
+                        type="number"
+                        min="1"
+                        value={assignmentOrder}
+                        onChange={(e) =>
+                          setAssignmentOrder(e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-actions">
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={saving}
+                    >
+                      {saving
+                        ? "Adding..."
+                        : "Add Assignment"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div>
+                <h3>Current Assignments</h3>
+
+                {getActiveAssignments(
+                  selectedWorkflow,
+                ).length === 0 ? (
+                  <p>No active assignments found.</p>
+                ) : (
+                  <div className="table-wrapper">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>User</th>
+                          <th>Role</th>
+                          <th>Order</th>
+                          <th>Status</th>
+                          <th>Assigned At</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {getActiveAssignments(
+                          selectedWorkflow,
+                        )
+                          .sort(
+                            (a, b) =>
+                              a.role === b.role
+                                ? a.order - b.order
+                                : a.role.localeCompare(b.role),
+                          )
+                          .map((assignment) => (
+                            <tr key={assignment.id}>
+                              <td>
+                                {getAssignmentUserName(
+                                  assignment,
+                                )}
+                              </td>
+
+                              <td>
+                                <span
+                                  className={`workflow-chip ${assignment.role.toLowerCase()}`}
                                 >
-                                    <div className="form-grid">
-                                        <div className="form-group">
-                                            <label>Role</label>
+                                  {assignment.role}
+                                </span>
+                              </td>
 
-                                            <select
-                                                value={assignmentRole}
-                                                onChange={(e) =>
-                                                    setAssignmentRole(
-                                                        e.target.value
-                                                    )
-                                                }
-                                            >
-                                                <option value="VERIFIER">
-                                                    Verifier
-                                                </option>
+                              <td>{assignment.order}</td>
 
-                                                <option value="APPROVER">
-                                                    Approver
-                                                </option>
-                                            </select>
-                                        </div>
+                              <td>
+                                <span className="status approved">
+                                  Active
+                                </span>
+                              </td>
 
-                                        <div className="form-group">
-                                            <label>User</label>
-
-                                            <select
-                                                value={selectedUser}
-                                                onChange={(e) =>
-                                                    setSelectedUser(
-                                                        e.target.value
-                                                    )
-                                                }
-                                            >
-                                                <option value="">
-                                                    Select User
-                                                </option>
-
-                                                {users
-                                                    .filter(
-                                                        (user) =>
-                                                            user.role ===
-                                                                assignmentRole
-                                                    )
-                                                    .map((user) => (
-                                                        <option
-                                                            key={
-                                                                user.id
-                                                            }
-                                                            value={
-                                                                user.id
-                                                            }
-                                                        >
-                                                            {
-                                                                user.username
-                                                            }
-                                                        </option>
-                                                    ))}
-                                            </select>
-                                        </div>
-
-                                        <div className="form-group">
-                                            <label>
-                                                Order
-                                            </label>
-
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={
-                                                    assignmentOrder
-                                                }
-                                                onChange={(e) =>
-                                                    setAssignmentOrder(
-                                                        e.target.value
-                                                    )
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="form-actions">
-                                        <button
-                                            type="submit"
-                                            className="btn btn-primary"
-                                            disabled={saving}
-                                        >
-                                            {saving
-                                                ? "Adding..."
-                                                : "Add Assignment"}
-                                        </button>
-                                    </div>
-                                </form>
-                            </div>
-
-                            <div>
-                                <h3>
-                                    Current Assignments
-                                </h3>
-
-                                {getActiveAssignments(
-                                    selectedWorkflow
-                                ).length === 0 ? (
-                                    <p>
-                                        No active assignments
-                                        found.
-                                    </p>
-                                ) : (
-                                    <div className="table-wrapper">
-                                        <table>
-                                            <thead>
-                                                <tr>
-                                                    <th>
-                                                        User
-                                                    </th>
-                                                    <th>
-                                                        Role
-                                                    </th>
-                                                    <th>
-                                                        Order
-                                                    </th>
-                                                    <th>
-                                                        Status
-                                                    </th>
-                                                    <th>
-                                                        Assigned At
-                                                    </th>
-                                                </tr>
-                                            </thead>
-
-                                            <tbody>
-                                                {getActiveAssignments(
-                                                    selectedWorkflow
-                                                )
-                                                    .sort(
-                                                        (
-                                                            a,
-                                                            b
-                                                        ) =>
-                                                            a.role ===
-                                                            b.role
-                                                                ? a.order -
-                                                                  b.order
-                                                                : a.role.localeCompare(
-                                                                      b.role
-                                                                  )
-                                                    )
-                                                    .map(
-                                                        (
-                                                            assignment
-                                                        ) => (
-                                                            <tr
-                                                                key={
-                                                                    assignment.id
-                                                                }
-                                                            >
-                                                                <td>
-                                                                    {getAssignmentUserName(
-                                                                        assignment
-                                                                    )}
-                                                                </td>
-
-                                                                <td>
-                                                                    <span
-                                                                        className={`workflow-chip ${assignment.role.toLowerCase()}`}
-                                                                    >
-                                                                        {
-                                                                            assignment.role
-                                                                        }
-                                                                    </span>
-                                                                </td>
-
-                                                                <td>
-                                                                    {
-                                                                        assignment.order
-                                                                    }
-                                                                </td>
-
-                                                                <td>
-                                                                    <span className="status approved">
-                                                                        Active
-                                                                    </span>
-                                                                </td>
-
-                                                                <td>
-                                                                    {formatDate(
-                                                                        assignment.created_at
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        )
-                                                    )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                              <td>
+                                {formatDate(
+                                  assignment.created_at,
                                 )}
-                            </div>
+                              </td>
 
-                            <div style={{ marginTop: "26px" }}>
-                                <h3>Workflow History</h3>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger"
+                                  onClick={() =>
+                                    handleRemoveAssignment(
+                                      assignment,
+                                    )
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
 
-                                {buildHistory(selectedWorkflow)
-                                    .length === 0 ? (
-                                    <p>No history available.</p>
-                                ) : (
-                                    <ul className="history-list">
-                                        {buildHistory(
-                                            selectedWorkflow
-                                        ).map((item) => (
-                                            <li
-                                                key={item.key}
-                                                className={`history-item history-${item.type}`}
-                                            >
-                                                <span className="history-dot" />
+              <div>
+                <h3>Workflow History</h3>
 
-                                                <div className="history-body">
-                                                    <strong>
-                                                        {item.event}
-                                                    </strong>
+                <ul className="history-list">
+                  {buildHistory(selectedWorkflow).map(
+                    (item) => (
+                      <li
+                        key={item.key}
+                        className={`history-item history-${item.type}`}
+                      >
+                        <span className="history-dot" />
 
-                                                    <p>
-                                                        {item.detail}
-                                                    </p>
-                                                </div>
+                        <div className="history-body">
+                          <strong>{item.event}</strong>
 
-                                                <span className="history-time">
-                                                    {formatDate(
-                                                        item.at
-                                                    )}
-                                                </span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-        </>
-    );
+                          <p>{item.detail}</p>
+                        </div>
+
+                        <span className="history-time">
+                          {formatDate(item.at)}
+                        </span>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default Workflows;
