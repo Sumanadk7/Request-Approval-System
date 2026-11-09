@@ -4,7 +4,8 @@ from .views import (
     WorkflowListCreateView,
     WorkflowDetailView,
     WorkflowAssignmentListCreateView,
-    WorkflowAssignmentReassignView
+    WorkflowAssignmentReassignView,
+    WorkflowAssignmentRemoveView
 )
 
 
@@ -32,6 +33,12 @@ urlpatterns = [
         "assignments/<int:pk>/reassign/",
         WorkflowAssignmentReassignView.as_view(),
         name="workflow-assignment-reassign"
+    ),
+
+    path(
+        "assignments/<int:pk>/remove/",
+        WorkflowAssignmentRemoveView.as_view(),
+        name="workflow-assignment-remove"
     ),
 
 ]

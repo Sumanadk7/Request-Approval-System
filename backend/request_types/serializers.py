@@ -5,6 +5,11 @@ from .models import RequestType
 
 class RequestTypeSerializer(serializers.ModelSerializer):
 
+    department_name = serializers.CharField(
+        source="department.name",
+        read_only=True
+    )
+
     class Meta:
         model = RequestType
 
@@ -13,6 +18,7 @@ class RequestTypeSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "department",
+            "department_name",
             "is_active",
             "created_at",
             "updated_at",

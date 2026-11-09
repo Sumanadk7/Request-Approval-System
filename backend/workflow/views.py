@@ -1,4 +1,6 @@
 from rest_framework import generics
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from django.utils import timezone
 
@@ -179,7 +181,6 @@ class WorkflowAssignmentListCreateView(generics.ListCreateAPIView):
             workflow=workflow,
             user=user,
             role=role,
-            order=order,
             is_active=True
         ).exists()
 
@@ -187,7 +188,8 @@ class WorkflowAssignmentListCreateView(generics.ListCreateAPIView):
 
             raise ValidationError(
                 "This user is already assigned to this "
-                "workflow position."
+                "workflow. A user can only be assigned once "
+                "in a workflow."
             )
 
         # =====================================================
@@ -298,7 +300,6 @@ class WorkflowAssignmentReassignView(generics.UpdateAPIView):
             workflow=assignment.workflow,
             user=new_user,
             role=assignment.role,
-            order=assignment.order,
             is_active=True
         ).exists()
 
@@ -306,7 +307,8 @@ class WorkflowAssignmentReassignView(generics.UpdateAPIView):
 
             raise ValidationError(
                 "This user is already assigned to this "
-                "workflow position."
+                "workflow. A user can only be assigned once "
+                "in a workflow."
             )
 
         # =====================================================
@@ -365,3 +367,63 @@ class WorkflowAssignmentReassignView(generics.UpdateAPIView):
         # =====================================================
 
         serializer.instance = new_assignment
+# =========================================================
+# WORKFLOW ASSIGNMENT REMOVE
+# =========================================================
+
+class WorkflowAssignmentRemoveView(APIView):
+
+    permission_classes = [IsAdmin]
+
+    def patch(self, request, pk):
+
+        try:
+
+            assignment = WorkflowAssignment.objects.get(
+                id=pk
+            )
+
+        except WorkflowAssignment.DoesNotExist:
+
+            return Response(
+                {"detail": "Assignment not found."},
+                status=404
+            )
+
+        if not assignment.is_active:
+
+            return Response(
+                {"detail": "Assignment is already inactive."},
+                status=400
+            )
+
+        WorkflowAssignmentHistory.objects.create(
+            workflow=assignment.workflow,
+            user=assignment.user,
+            role=assignment.role,
+            order=assignment.order,
+            assigned_until=timezone.now()
+        )
+
+        assignment.is_active = False
+
+        assignment.save(
+            update_fields=["is_active"]
+        )
+
+        AuditLog.objects.create(
+            workflow=assignment.workflow,
+            user=request.user,
+            action="REASSIGNED",
+            message=(
+                f"Workflow assignment removed from "
+                f"{assignment.user.username if assignment.user else 'unknown user'}. "
+                f"Role: {assignment.role}, "
+                f"Order: {assignment.order}."
+            )
+        )
+
+        return Response({
+            "detail": "Assignment removed successfully.",
+            "assignment": assignment.id,
+        })
