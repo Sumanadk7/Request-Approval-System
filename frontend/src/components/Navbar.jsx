@@ -1,8 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import api from "../services/api";
 
-function Navbar({ hideUsername = false }) {
+function getDotClass(message) {
+  const text = (message || "").toLowerCase();
+
+  if (
+    text.includes("approved") ||
+    text.includes("verified")
+  ) {
+    return "success";
+  }
+
+  if (text.includes("rejected")) {
+    return "danger";
+  }
+
+  return "info";
+}
+
+function Navbar({
+  hideUsername = false,
+  onNavigate = null,
+  isAdmin = false,
+}) {
   const [username, setUsername] = useState("User");
   const [showForm, setShowForm] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
@@ -10,6 +31,13 @@ function Navbar({ hideUsername = false }) {
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [recentNotifications, setRecentNotifications] =
+    useState([]);
+  const [showBell, setShowBell] = useState(false);
+
+  const bellRef = useRef(null);
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
@@ -19,6 +47,61 @@ function Navbar({ hideUsername = false }) {
     }
   }, []);
 
+  const fetchNotifications = async () => {
+    try {
+      const endpoint = isAdmin
+        ? "/notifications/admin/"
+        : "/notifications/";
+
+      const response = await api.get(endpoint);
+
+      const notifications = response.data || [];
+
+      setUnreadCount(
+        notifications.filter(
+          (notification) => !notification.is_read,
+        ).length,
+      );
+
+      setRecentNotifications(notifications.slice(0, 5));
+    } catch (error) {
+      console.log(
+        "Failed to fetch navbar notifications:",
+        error,
+      );
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!showBell) {
+      return undefined;
+    }
+
+    const handleClick = (event) => {
+      if (
+        bellRef.current &&
+        !bellRef.current.contains(event.target)
+      ) {
+        setShowBell(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClick);
+
+    return () =>
+      document.removeEventListener("mousedown", handleClick);
+  }, [showBell]);
+
   const handleLogout = () => {
     localStorage.removeItem("access");
     localStorage.removeItem("refresh");
@@ -26,6 +109,19 @@ function Navbar({ hideUsername = false }) {
     localStorage.removeItem("role");
 
     window.location.reload();
+  };
+
+  const handleBellClick = () => {
+    setShowBell((previous) => !previous);
+    fetchNotifications();
+  };
+
+  const handleViewAll = () => {
+    setShowBell(false);
+
+    if (onNavigate) {
+      onNavigate("notifications");
+    }
   };
 
   const handleChangePassword = async (e) => {
@@ -76,6 +172,92 @@ function Navbar({ hideUsername = false }) {
         <div className="user-info">
           {!hideUsername && <strong>{username}</strong>}
           <span>Online</span>
+        </div>
+
+        <div className="navbar-bell" ref={bellRef}>
+          <button
+            type="button"
+            className={`navbar-bell-button ${
+              showBell ? "active" : ""
+            }`}
+            onClick={handleBellClick}
+            title="Notifications"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+
+            {unreadCount > 0 && (
+              <span className="bell-badge">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {showBell && (
+            <div className="navbar-bell-panel">
+              <div className="bell-panel-head">
+                <strong>Notifications</strong>
+
+                {unreadCount > 0 && (
+                  <span className="bell-count">
+                    {unreadCount} unread
+                  </span>
+                )}
+              </div>
+
+              <div className="bell-panel-body">
+                {recentNotifications.length === 0 ? (
+                  <p className="bell-empty">
+                    No notifications yet.
+                  </p>
+                ) : (
+                  recentNotifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`bell-item ${
+                        notification.is_read ? "read" : "unread"
+                      }`}
+                    >
+                      <span
+                        className={`bell-dot ${getDotClass(
+                          notification.message,
+                        )}`}
+                      />
+
+                      <div>
+                        <p>{notification.message}</p>
+
+                        <span>
+                          {new Date(
+                            notification.created_at,
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="bell-view-all"
+                onClick={handleViewAll}
+              >
+                View all notifications
+              </button>
+            </div>
+          )}
         </div>
 
         <button onClick={() => setShowForm(!showForm)}>

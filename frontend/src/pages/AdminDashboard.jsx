@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
@@ -106,7 +106,7 @@ function AdminDashboard() {
 
   return (
     <div>
-      <Navbar />
+      <Navbar isAdmin={isAdmin} onNavigate={handleNavigate} />
 
       <div className="dashboard-content">
         <Sidebar
@@ -125,16 +125,7 @@ function AdminDashboard() {
               </div>
 
               {error && (
-                <div
-                  style={{
-                    marginBottom: "20px",
-                    padding: "12px 15px",
-                    border: "1px solid #fca5a5",
-                    background: "#fef2f2",
-                    color: "#991b1b",
-                    borderRadius: "5px",
-                  }}
-                >
+                <div className="alert alert-error">
                   {error}
                 </div>
               )}

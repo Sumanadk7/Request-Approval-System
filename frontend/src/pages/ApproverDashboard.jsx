@@ -275,7 +275,7 @@ function ApproverDashboard() {
 
   return (
     <div>
-      <Navbar />
+      <Navbar isAdmin={isAdmin} onNavigate={setCurrentPage} />
 
       <div className="dashboard-content">
         <Sidebar
@@ -310,31 +310,13 @@ function ApproverDashboard() {
               </div>
 
               {error && (
-                <div
-                  style={{
-                    marginBottom: "20px",
-                    padding: "12px 15px",
-                    border: "1px solid #fca5a5",
-                    background: "#fef2f2",
-                    color: "#991b1b",
-                    borderRadius: "7px",
-                  }}
-                >
+                <div className="alert alert-error">
                   {error}
                 </div>
               )}
 
               {success && (
-                <div
-                  style={{
-                    marginBottom: "20px",
-                    padding: "12px 15px",
-                    border: "1px solid #86efac",
-                    background: "#f0fdf4",
-                    color: "#166534",
-                    borderRadius: "7px",
-                  }}
-                >
+                <div className="alert alert-success">
                   {success}
                 </div>
               )}
