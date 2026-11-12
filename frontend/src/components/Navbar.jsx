@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import api from "../services/api";
 
+import ntcLogo from "../assets/ntc-logo.jpg";
+
 function getDotClass(message) {
   const text = (message || "").toLowerCase();
 
@@ -160,7 +162,9 @@ function Navbar({
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <div className="brand-logo">NT</div>
+        <div className="brand-logo">
+          <img src={ntcLogo} alt="Nepal Telecom" />
+        </div>
 
         <div>
           <h2>Request Approval System</h2>
@@ -188,8 +192,8 @@ function Navbar({
               height="18"
               viewBox="0 0 24 24"
               fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+              stroke="#005baa"
+              strokeWidth="2.4"
               strokeLinecap="round"
               strokeLinejoin="round"
             >
