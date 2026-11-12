@@ -3,6 +3,8 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import api from "../services/api";
 
+import ntcLogo from "../assets/ntc-logo.jpg";
+
 function Register({ onNavigate }) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -81,7 +83,7 @@ function Register({ onNavigate }) {
       <ToastContainer position="top-right" autoClose={3000} />
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-logo">NT</div>
+          <div className="login-logo"><img src={ntcLogo} alt="Nepal Telecom" /></div>
           <h1>Request Approval System</h1>
           <p>Nepal Telecom</p>
         </div>

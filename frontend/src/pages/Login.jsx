@@ -5,6 +5,8 @@ import "react-toastify/dist/ReactToastify.css";
 
 import api from "../services/api";
 
+import ntcLogo from "../assets/ntc-logo.jpg";
+
 import UserDashboard from "./UserDashboard";
 import AdminDashboard from "./AdminDashboard";
 import VerifierDashboard from "./VerifierDashboard";
@@ -166,7 +168,7 @@ function Login({ onNavigate }) {
         <ToastContainer position="top-right" autoClose={3000} />
         <div className="login-card">
           <div className="login-brand">
-            <div className="login-logo">NT</div>
+            <div className="login-logo"><img src={ntcLogo} alt="Nepal Telecom" /></div>
 
             <h1>Request Approval System</h1>
 
@@ -206,7 +208,7 @@ function Login({ onNavigate }) {
       <ToastContainer position="top-right" autoClose={3000} />
       <div className="login-card">
         <div className="login-brand">
-          <div className="login-logo">NT</div>
+          <div className="login-logo"><img src={ntcLogo} alt="Nepal Telecom" /></div>
 
           <h1>Request Approval System</h1>
 
