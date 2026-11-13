@@ -18,6 +18,7 @@ from .permissions import (
 from .serializers import (
     RegisterSerializer,
     AdminUserSerializer,
+    LoginSerializer,
 )
 
 
@@ -26,6 +27,7 @@ class RegisterView(generics.CreateAPIView):
 
 
 class LoginView(TokenObtainPairView):
+    serializer_class = LoginSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
@@ -38,6 +40,7 @@ class ProfileView(APIView):
             "message": "You are authenticated!",
             "username": request.user.username,
             "email": request.user.email,
+            "employee_id": request.user.padded_employee_id(),
             "role": request.user.role,
             "is_staff": request.user.is_staff,
         })
@@ -135,7 +138,10 @@ class AdminStatsView(APIView):
 
 
 class AdminUserListCreateView(generics.ListCreateAPIView):
-    queryset = User.objects.all().order_by("id")
+    queryset = (
+        User.objects.all()
+        .order_by("-created_at", "-id")
+    )
     serializer_class = AdminUserSerializer
     permission_classes = [IsAdmin]
 

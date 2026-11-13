@@ -6,7 +6,7 @@ from .permissions import IsAdmin
 
 
 class DepartmentListCreateView(generics.ListCreateAPIView):
-    queryset = Department.objects.all().order_by("name")
+    queryset = Department.objects.all().order_by("-created_at", "name")
     serializer_class = DepartmentSerializer
     permission_classes = [IsAdmin]
 

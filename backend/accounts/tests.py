@@ -47,7 +47,7 @@ class RegistrationTests(TestCase):
         self.assertEqual(user.role, "USER")
         self.assertFalse(user.is_staff)
 
-    def test_register_verifier_role(self):
+    def test_register_role_ignored_defaults_to_user(self):
         response = api_post(
             "/api/accounts/register/",
             {
@@ -60,10 +60,10 @@ class RegistrationTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(
-            User.objects.get(username="newverifier").role, "VERIFIER"
+            User.objects.get(username="newverifier").role, "USER"
         )
 
-    def test_register_admin_role_rejected(self):
+    def test_register_admin_role_ignored(self):
         response = api_post(
             "/api/accounts/register/",
             {
@@ -74,8 +74,12 @@ class RegistrationTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertFalse(User.objects.filter(username="fakeadmin").exists())
+        self.assertEqual(response.status_code, 201)
+
+        created = User.objects.get(username="fakeadmin")
+
+        self.assertEqual(created.role, "USER")
+        self.assertFalse(created.is_staff)
 
     def test_register_ignores_is_staff(self):
         response = api_post(
@@ -141,6 +145,25 @@ class AuthTests(TestCase):
         client = Client(HTTP_AUTHORIZATION=f"Bearer {self.token}")
         response = client.get("/api/accounts/admin-users/")
         self.assertEqual(response.status_code, 403)
+
+    def test_login_with_employee_id(self):
+        self.user.employee_id = 7
+        self.user.save(update_fields=["employee_id"])
+
+        response = api_post(
+            "/api/token/",
+            {"username": "0007", "password": "password123"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_login_with_username_still_works(self):
+        response = api_post(
+            "/api/token/",
+            {"username": "authuser", "password": "password123"},
+        )
+
+        self.assertEqual(response.status_code, 200)
 
 
 class AdminUserTests(TestCase):

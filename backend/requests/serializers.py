@@ -46,6 +46,114 @@ class RequestSerializer(serializers.ModelSerializer):
 
     is_final_approver_step = serializers.SerializerMethodField()
 
+    route = serializers.SerializerMethodField()
+
+    workflow_stage = serializers.SerializerMethodField()
+
+    def get_route(self, obj):
+        if obj.status != "DRAFT" and obj.assignments.exists():
+            assignments = obj.assignments.filter(
+                is_active=True
+            ).order_by("role", "order")
+        else:
+            workflow = getattr(obj.request_type, "workflow", None)
+
+            if workflow is None or not workflow.is_active:
+                return []
+
+            assignments = workflow.assignments.filter(
+                is_active=True
+            ).order_by("role", "order")
+
+        route = []
+
+        for assignment in assignments:
+            if assignment.user is None:
+                continue
+
+            route.append({
+                "role": assignment.role,
+                "order": assignment.order,
+                "username": assignment.user.username,
+            })
+
+        return route
+
+    def get_workflow_stage(self, obj):
+        workflow = getattr(obj.request_type, "workflow", None)
+
+        if obj.status == "DRAFT":
+            return {
+                "label": "Draft",
+                "verifier_done": 0,
+                "verifier_total": 0,
+                "approver_done": 0,
+                "approver_total": 0,
+            }
+
+        if workflow is None:
+            return {
+                "label": obj.status.title(),
+                "verifier_done": 0,
+                "verifier_total": 0,
+                "approver_done": 0,
+                "approver_total": 0,
+            }
+
+        verifier_total = obj.assignments.filter(
+            role="VERIFIER",
+            is_active=True,
+        ).count()
+
+        approver_total = obj.assignments.filter(
+            role="APPROVER",
+            is_active=True,
+        ).count()
+
+        if workflow.verifier_mode == "PARALLEL":
+            verifier_done = obj.verifier_actions.filter(
+                action="VERIFIED"
+            ).values("verifier").distinct().count()
+        else:
+            verifier_done = max(
+                obj.current_verifier_order - 1, 0
+            )
+
+        if workflow.approver_mode == "PARALLEL":
+            approver_done = obj.approver_actions.filter(
+                action="APPROVED"
+            ).values("approver").distinct().count()
+        else:
+            approver_done = max(
+                obj.current_approver_order - 1, 0
+            )
+
+        if obj.status == "REJECTED":
+            label = "Rejected"
+        elif obj.status == "APPROVED":
+            verifier_done = verifier_total
+            approver_done = approver_total
+            label = "Approved - all steps completed"
+        elif verifier_done < verifier_total:
+            label = (
+                f"Verification {verifier_done}/"
+                f"{verifier_total}"
+            )
+        elif approver_done < approver_total:
+            label = (
+                f"Approval {approver_done}/{approver_total}"
+            )
+        else:
+            label = "Completed"
+
+        return {
+            "label": label,
+            "verifier_done": verifier_done,
+            "verifier_total": verifier_total,
+            "approver_done": approver_done,
+            "approver_total": approver_total,
+        }
+
     def get_is_final_approver_step(self, obj):
         if obj.status not in ["VERIFIED", "DECISION_REQUIRED"]:
             return False
@@ -124,6 +232,8 @@ class RequestSerializer(serializers.ModelSerializer):
             "workflow_verifier_mode",
             "workflow_approver_mode",
             "is_final_approver_step",
+            "route",
+            "workflow_stage",
             "title",
             "description",
             "attachment",
@@ -167,6 +277,8 @@ class RequestSerializer(serializers.ModelSerializer):
             "workflow_verifier_mode",
             "workflow_approver_mode",
             "is_final_approver_step",
+            "route",
+            "workflow_stage",
         ]
 
 

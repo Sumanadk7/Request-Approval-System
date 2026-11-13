@@ -7,7 +7,7 @@ from .permissions import IsAdmin
 
 
 class RequestTypeListCreateView(generics.ListCreateAPIView):
-    queryset = RequestType.objects.all().order_by("name")
+    queryset = RequestType.objects.all().order_by("-created_at", "name")
     serializer_class = RequestTypeSerializer
 
     def get_permissions(self):
