@@ -31,7 +31,7 @@ from audit.models import AuditLog
 
 class WorkflowListCreateView(generics.ListCreateAPIView):
 
-    queryset = Workflow.objects.all().order_by("request_type")
+    queryset = Workflow.objects.all().order_by("-created_at", "-id")
     serializer_class = WorkflowSerializer
     permission_classes = [IsAdmin]
 

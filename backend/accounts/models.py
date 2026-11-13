@@ -16,6 +16,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=20, blank=True)
 
+    employee_id = models.PositiveSmallIntegerField(
+        unique=True,
+        null=True,
+        blank=True,
+        help_text=(
+            "4-digit employee identifier (0000-9999) used "
+            "to log in. Assigned automatically."
+        ),
+    )
+
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
@@ -34,3 +44,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
+
+    def padded_employee_id(self):
+        if self.employee_id is None:
+            return None
+
+        return str(self.employee_id).zfill(4)
