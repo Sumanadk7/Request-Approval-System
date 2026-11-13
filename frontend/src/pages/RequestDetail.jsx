@@ -32,6 +32,12 @@ function RequestDetail({ requestId, onBack, onChanged }) {
   const isOwner =
     (detail?.created_by || "") === (username || "");
 
+  const timeline = [...(detail?.audit_logs || [])].sort(
+    (a, b) => new Date(b.created_at) - new Date(a.created_at),
+  );
+
+  const timelinePaged = usePagedList(timeline, 10);
+
   const fetchDetail = async () => {
     try {
       setLoading(true);
@@ -410,12 +416,6 @@ function RequestDetail({ requestId, onBack, onChanged }) {
   const approvedBy = new Set(
     (detail.approver_actions || []).map((a) => a.username),
   );
-
-  const timeline = [...(detail.audit_logs || [])].sort(
-    (a, b) => new Date(b.created_at) - new Date(a.created_at),
-  );
-
-  const timelinePaged = usePagedList(timeline, 10);
 
   const formatDateTime = (date) => {
     if (!date) {
