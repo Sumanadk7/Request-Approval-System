@@ -13,6 +13,7 @@ function CreateRequest() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [routeInfo, setRouteInfo] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -72,7 +73,19 @@ function CreateRequest() {
         formData.append("attachment", attachment);
       }
 
-      await api.post("/requests/create/", formData);
+      const response = await api.post("/requests/create/", formData);
+
+      const verifiers = (response.data?.route || []).filter(
+        (entry) => entry.role === "VERIFIER",
+      );
+
+      const approvers = (response.data?.route || []).filter(
+        (entry) => entry.role === "APPROVER",
+      );
+
+      if (verifiers.length > 0 || approvers.length > 0) {
+        setRouteInfo({ verifiers, approvers });
+      }
 
       setMessage(
         "Request saved as a draft. You can edit or delete it in My Requests for the next 24 hours; it will then be submitted automatically.",
@@ -85,6 +98,7 @@ function CreateRequest() {
     } catch (error) {
       console.log("Failed to create request:", error);
 
+      setRouteInfo(null);
       setError(
         error.response?.data?.detail || "Failed to submit request.",
       );
@@ -92,6 +106,12 @@ function CreateRequest() {
       setLoading(false);
     }
   };
+
+  const formatRouteLine = (entries) =>
+    entries
+      .sort((a, b) => a.order - b.order)
+      .map((entry) => entry.username)
+      .join("  →  ");
 
   return (
     <>
@@ -111,6 +131,26 @@ function CreateRequest() {
 
         {message && (
           <div className="alert alert-success">{message}</div>
+        )}
+
+        {message && routeInfo && (
+          <div className="route-box">
+            <strong>Workflow route for this request</strong>
+
+            {routeInfo.verifiers.length > 0 && (
+              <p>
+                <span>Verification:</span>{" "}
+                {formatRouteLine(routeInfo.verifiers)}
+              </p>
+            )}
+
+            {routeInfo.approvers.length > 0 && (
+              <p>
+                <span>Approval:</span>{" "}
+                {formatRouteLine(routeInfo.approvers)}
+              </p>
+            )}
+          </div>
         )}
 
         {error && <div className="alert alert-error">{error}</div>}

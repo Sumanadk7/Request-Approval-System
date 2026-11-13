@@ -11,7 +11,6 @@ function Register({ onNavigate }) {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState("USER");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -44,15 +43,21 @@ function Register({ onNavigate }) {
 
     try {
       setLoading(true);
-      await api.post("/accounts/register/", {
+
+      const response = await api.post("/accounts/register/", {
         username: username.trim(),
         email: email.trim(),
         phone: phone.trim(),
         password,
-        role,
       });
 
-      toast.success("Registration successful! You can now sign in.");
+      const employeeId = response.data?.employee_id_display;
+
+      const message = employeeId
+        ? `Registration successful! Your Employee ID is ${employeeId}. Sign in with it.`
+        : "Registration successful! You can now sign in.";
+
+      toast.success(message, { autoClose: 8000 });
       if (onNavigate) {
         onNavigate("login");
       }
@@ -61,14 +66,12 @@ function Register({ onNavigate }) {
       setPhone("");
       setPassword("");
       setConfirmPassword("");
-      setRole("USER");
     } catch (error) {
       console.log("Registration failed:", error);
       const message =
         error.response?.data?.username?.[0] ||
         error.response?.data?.email?.[0] ||
         error.response?.data?.password?.[0] ||
-        error.response?.data?.role?.[0] ||
         error.response?.data?.detail ||
         "Registration failed.";
       setError(message);
@@ -128,29 +131,6 @@ function Register({ onNavigate }) {
               placeholder="Enter your phone number"
               autoComplete="tel"
             />
-          </div>
-
-          <div className="login-field">
-            <label htmlFor="role">Role</label>
-            <select
-              id="role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "12px",
-                border: "1px solid #d1d5db",
-                borderRadius: "7px",
-                outline: "none",
-                background: "#ffffff",
-                color: "#111827",
-                fontSize: "14px",
-              }}
-            >
-              <option value="USER">User</option>
-              <option value="VERIFIER">Verifier</option>
-              <option value="APPROVER">Approver</option>
-            </select>
           </div>
 
           <div className="login-field">

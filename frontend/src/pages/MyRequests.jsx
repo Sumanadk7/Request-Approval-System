@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import api from "../services/api";
 import EditRequest from "./EditRequest";
 import RequestDetail from "./RequestDetail";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 
 const formatRemaining = (deadline, now) => {
   if (!deadline) {
@@ -107,6 +110,8 @@ function MyRequests() {
       new Date(second.created_at) - new Date(first.created_at),
   );
 
+  const paged = usePagedList(orderedRequests, 10);
+
   if (editingRequestId) {
     return (
       <EditRequest
@@ -175,15 +180,16 @@ function MyRequests() {
                   <th>Request Type</th>
                   <th>Title</th>
                   <th>Status</th>
+                  <th>Workflow Stage</th>
                   <th>Created</th>
                   <th>Action</th>
                 </tr>
               </thead>
 
               <tbody>
-                {orderedRequests.map((request, index) => (
+                {paged.pageItems.map((request, index) => (
                   <tr key={request.id}>
-                    <td>{index + 1}</td>
+                    <td>{paged.absoluteIndex(index)}</td>
 
                     <td>{request.request_type_name}</td>
 
@@ -197,6 +203,24 @@ function MyRequests() {
                           Auto-submits in{" "}
                           {formatRemaining(request.action_deadline, now)}
                         </div>
+                      )}
+                    </td>
+
+                    <td>
+                      {request.workflow_stage ? (
+                        <span
+                          className={`workflow-stage ${
+                            request.status === "APPROVED"
+                              ? "done"
+                              : request.status === "REJECTED"
+                                ? "rejected"
+                                : ""
+                          }`}
+                        >
+                          {request.workflow_stage.label}
+                        </span>
+                      ) : (
+                        "-"
                       )}
                     </td>
 
@@ -247,6 +271,14 @@ function MyRequests() {
                 ))}
               </tbody>
             </table>
+
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
           </div>
         )}
       </div>

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
 import api from "../services/api";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 
 function Departments() {
   const [departments, setDepartments] = useState([]);
@@ -11,6 +14,8 @@ function Departments() {
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
+
+  const paged = usePagedList(departments, 10);
 
   const fetchDepartments = async () => {
     try {
@@ -191,16 +196,16 @@ function Departments() {
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>S.N</th>
                   <th>Department Name</th>
                   <th>Actions</th>
                 </tr>
               </thead>
 
               <tbody>
-                {departments.map((department) => (
+                {paged.pageItems.map((department, index) => (
                   <tr key={department.id}>
-                    <td>#{department.id}</td>
+                    <td>{paged.absoluteIndex(index)}</td>
 
                     <td>{department.name}</td>
 
@@ -217,6 +222,14 @@ function Departments() {
                 ))}
               </tbody>
             </table>
+
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
           </div>
         )}
       </div>

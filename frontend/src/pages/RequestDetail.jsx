@@ -5,6 +5,9 @@ import {
   getAttachmentUrl,
   getFileNameFromUrl,
 } from "../utils/files";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 
 function RequestDetail({ requestId, onBack, onChanged }) {
   const [detail, setDetail] = useState(null);
@@ -409,8 +412,10 @@ function RequestDetail({ requestId, onBack, onChanged }) {
   );
 
   const timeline = [...(detail.audit_logs || [])].sort(
-    (a, b) => new Date(a.created_at) - new Date(b.created_at),
+    (a, b) => new Date(b.created_at) - new Date(a.created_at),
   );
+
+  const timelinePaged = usePagedList(timeline, 10);
 
   const formatDateTime = (date) => {
     if (!date) {
@@ -846,7 +851,7 @@ function RequestDetail({ requestId, onBack, onChanged }) {
                 </tr>
               </thead>
               <tbody>
-                {timeline.map((entry) => (
+                {timelinePaged.pageItems.map((entry) => (
                   <tr key={entry.id}>
                     <td>{formatDateTime(entry.created_at)}</td>
                     <td>
@@ -861,6 +866,14 @@ function RequestDetail({ requestId, onBack, onChanged }) {
                 ))}
               </tbody>
             </table>
+
+            <Pagination
+              page={timelinePaged.page}
+              pageCount={timelinePaged.pageCount}
+              total={timelinePaged.total}
+              setPage={timelinePaged.setPage}
+              setPageSize={timelinePaged.setPageSize}
+            />
           </div>
         )}
       </div>

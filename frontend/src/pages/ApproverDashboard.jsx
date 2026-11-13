@@ -2,6 +2,9 @@ import { Fragment, useEffect, useState } from "react";
 
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 import api from "../services/api";
 import {
   getAttachmentUrl,
@@ -146,6 +149,8 @@ function ApproverDashboard() {
         : statusFilter === "APPROVED"
           ? approvedRequests
           : rejectedRequests;
+
+  const paged = usePagedList(displayRequests, 10);
 
   const workflowLabel = (request) => {
     if (request.status === "APPROVED") {
@@ -384,10 +389,10 @@ function ApproverDashboard() {
                       </thead>
 
                       <tbody>
-                        {displayRequests.map((request, index) => (
+                        {paged.pageItems.map((request, index) => (
                           <Fragment key={request.id}>
                             <tr>
-                              <td>{index + 1}</td>
+                              <td>{paged.absoluteIndex(index)}</td>
 
                               <td>
                                 {request.created_by || request.user || "—"}
@@ -607,6 +612,14 @@ function ApproverDashboard() {
                         ))}
                       </tbody>
                     </table>
+
+                    <Pagination
+                      page={paged.page}
+                      pageCount={paged.pageCount}
+                      total={paged.total}
+                      setPage={paged.setPage}
+                      setPageSize={paged.setPageSize}
+                    />
                   </div>
                 )}
               </div>

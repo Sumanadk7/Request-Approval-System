@@ -223,14 +223,14 @@ function Login({ onNavigate }) {
 
         <form onSubmit={handleSubmit}>
           <div className="login-field">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="username">Username or Employee ID</label>
 
             <input
               id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder="Enter username or 4-digit Employee ID"
               autoComplete="username"
             />
           </div>
