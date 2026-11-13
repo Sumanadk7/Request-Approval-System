@@ -133,6 +133,14 @@ function Requests({ initialStatusFilter = "ALL" }) {
 
         {!loading && !error && filteredRequests.length > 0 && (
           <div className="table-wrapper">
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -184,14 +192,6 @@ function Requests({ initialStatusFilter = "ALL" }) {
                 ))}
               </tbody>
             </table>
-
-            <Pagination
-              page={paged.page}
-              pageCount={paged.pageCount}
-              total={paged.total}
-              setPage={paged.setPage}
-              setPageSize={paged.setPageSize}
-            />
           </div>
         )}
       </div>

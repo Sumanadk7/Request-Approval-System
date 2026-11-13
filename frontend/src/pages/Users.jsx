@@ -365,6 +365,14 @@ function Users() {
           <p>No users found.</p>
         ) : (
           <div className="table-wrapper">
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -434,14 +442,6 @@ function Users() {
                 ))}
               </tbody>
             </table>
-
-            <Pagination
-              page={paged.page}
-              pageCount={paged.pageCount}
-              total={paged.total}
-              setPage={paged.setPage}
-              setPageSize={paged.setPageSize}
-            />
           </div>
         )}
       </div>

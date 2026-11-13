@@ -173,6 +173,14 @@ function MyRequests() {
 
         {!loading && !error && requests.length > 0 && (
           <div className="table-wrapper">
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -271,14 +279,6 @@ function MyRequests() {
                 ))}
               </tbody>
             </table>
-
-            <Pagination
-              page={paged.page}
-              pageCount={paged.pageCount}
-              total={paged.total}
-              setPage={paged.setPage}
-              setPageSize={paged.setPageSize}
-            />
           </div>
         )}
       </div>

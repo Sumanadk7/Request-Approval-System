@@ -193,6 +193,14 @@ function Departments() {
           <p>No departments found.</p>
         ) : (
           <div className="table-wrapper">
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -222,14 +230,6 @@ function Departments() {
                 ))}
               </tbody>
             </table>
-
-            <Pagination
-              page={paged.page}
-              pageCount={paged.pageCount}
-              total={paged.total}
-              setPage={paged.setPage}
-              setPageSize={paged.setPageSize}
-            />
           </div>
         )}
       </div>
