@@ -38,6 +38,93 @@ function RequestDetail({ requestId, onBack, onChanged }) {
 
   const timelinePaged = usePagedList(timeline, 10);
 
+  const routeVerifiers = (detail?.route || [])
+    .filter((entry) => entry.role === "VERIFIER")
+    .sort((a, b) => a.order - b.order);
+
+  const routeApprovers = (detail?.route || [])
+    .filter((entry) => entry.role === "APPROVER")
+    .sort((a, b) => a.order - b.order);
+
+  const verifiedUsernames = new Set(
+    (detail?.verifier_actions || [])
+      .filter((action) => action.action === "VERIFIED")
+      .map((action) => action.username),
+  );
+
+  const approvedUsernames = new Set(
+    (detail?.approver_actions || [])
+      .filter((action) => action.action === "APPROVED")
+      .map((action) => action.username),
+  );
+
+  const rejectedUsernames = new Set(
+    [
+      ...(detail?.verifier_actions || []),
+      ...(detail?.approver_actions || []),
+    ]
+      .filter((action) => action.action === "REJECTED")
+      .map((action) => action.username)
+      .concat(
+        (detail?.audit_logs || [])
+          .filter((log) => log.action === "REJECTED" && log.user_name)
+          .map((log) => log.user_name),
+      ),
+  );
+
+  const routeNodeState = (node) => {
+    if (!detail) {
+      return "waiting";
+    }
+
+    if (rejectedUsernames.has(node.username)) {
+      return "rejected";
+    }
+
+    const acted =
+      node.role === "VERIFIER"
+        ? verifiedUsernames.has(node.username)
+        : approvedUsernames.has(node.username);
+
+    if (acted) {
+      return "done";
+    }
+
+    const inProgress = ["PENDING", "VERIFIED", "DECISION_REQUIRED"].includes(
+      detail.status,
+    );
+
+    if (!inProgress) {
+      return "waiting";
+    }
+
+    if (node.role === "VERIFIER") {
+      if (detail.status === "PENDING" || detail.status === "DECISION_REQUIRED") {
+        if (detail.workflow_verifier_mode === "SEQUENTIAL") {
+          return node.username === detail.current_verifier_username
+            ? "current"
+            : "waiting";
+        }
+
+        return "current";
+      }
+
+      return "waiting";
+    }
+
+    if (detail.status === "VERIFIED" || detail.status === "DECISION_REQUIRED") {
+      if (detail.workflow_approver_mode === "SEQUENTIAL") {
+        return node.username === detail.current_approver_username
+          ? "current"
+          : "waiting";
+      }
+
+      return "current";
+    }
+
+    return "waiting";
+  };
+
   const fetchDetail = async () => {
     try {
       setLoading(true);
@@ -604,6 +691,88 @@ function RequestDetail({ requestId, onBack, onChanged }) {
           )}
         </div>
       </div>
+
+      {/* ================= WORKFLOW ROUTE ================= */}
+      {/* Hierarchy attached to the request document */}
+
+      {detail.route && detail.route.length > 0 && (
+        <div className="section">
+          <div className="section-header">
+            <h2>Workflow Route</h2>
+          </div>
+
+          <p className="route-note">
+            This hierarchy was fixed when the request was created. It shows who
+            verifies and who approves, and how far the request has progressed.
+          </p>
+
+          <div className="route-chain">
+            {[
+              {
+                key: "VERIFIER",
+                title: "Verification",
+                mode: detail.workflow_verifier_mode,
+                nodes: routeVerifiers,
+              },
+              {
+                key: "APPROVER",
+                title: "Approval",
+                mode: detail.workflow_approver_mode,
+                nodes: routeApprovers,
+              },
+            ].map((group) =>
+              group.nodes.length === 0 ? null : (
+                <div className="route-group" key={group.key}>
+                  <div className="route-group-head">
+                    <span className="route-group-title">{group.title}</span>
+
+                    <span className="route-group-mode">
+                      {group.mode === "PARALLEL" ? "Parallel" : "Sequential"}
+                    </span>
+                  </div>
+
+                  <div className="route-nodes">
+                    {group.nodes.map((node, index) => {
+                      const state = routeNodeState(node);
+
+                      const stateMeta = {
+                        done: { icon: "✓", label: "Passed" },
+                        rejected: { icon: "✕", label: "Rejected" },
+                        current: { icon: "▶", label: "Current step" },
+                        waiting: { icon: "○", label: "Pending" },
+                      }[state];
+
+                      return (
+                        <div
+                          className={`route-node route-${state}`}
+                          key={`${node.role}-${node.order}-${node.username}`}
+                        >
+                          <span className="route-marker">
+                            {stateMeta.icon}
+                          </span>
+
+                          <span className="route-order">
+                            {index + 1}.
+                          </span>
+
+                          <span className="route-user">
+                            {node.username}
+                            {node.username === username ? " (you)" : ""}
+                          </span>
+
+                          <span className="route-state">
+                            {stateMeta.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ================= MESSAGES ================= */}
 
