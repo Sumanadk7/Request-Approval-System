@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
 import api from "../services/api";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 
 function RequestTypes() {
   const [requestTypes, setRequestTypes] = useState([]);
@@ -16,6 +19,8 @@ function RequestTypes() {
   const [department, setDepartment] = useState("");
 
   const [departments, setDepartments] = useState([]);
+
+  const paged = usePagedList(requestTypes, 10);
 
   const fetchRequestTypes = async () => {
     try {
@@ -241,7 +246,7 @@ function RequestTypes() {
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
+                  <th>S.N</th>
                   <th>Name</th>
                   <th>Description</th>
                   <th>Department</th>
@@ -250,9 +255,9 @@ function RequestTypes() {
               </thead>
 
               <tbody>
-                {requestTypes.map((requestType) => (
+                {paged.pageItems.map((requestType, index) => (
                   <tr key={requestType.id}>
-                    <td>#{requestType.id}</td>
+                    <td>{paged.absoluteIndex(index)}</td>
 
                     <td>{requestType.name}</td>
 
@@ -277,6 +282,14 @@ function RequestTypes() {
                 ))}
               </tbody>
             </table>
+
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
           </div>
         )}
       </div>

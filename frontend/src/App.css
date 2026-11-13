@@ -1,4 +1,4 @@
-
+﻿
 /* =========================
    GLOBAL
    ========================= */
@@ -2728,7 +2728,7 @@ button[class*="view"]:hover {
 }
 
 .audit-context::before {
-    content: "·";
+    content: "Â·";
 
     margin-right: 10px;
 
@@ -3416,4 +3416,113 @@ button[class*="view"]:hover {
         height: 34px;
         padding: 0;
     }
+}
+
+/* ---------- Table pagination ---------- */
+
+.table-pager {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 4px 4px;
+}
+
+.table-pager-pages {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.table-pager-page {
+    min-width: 34px;
+    padding: 6px 10px;
+    border: 1px solid #d6e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #12304a;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.table-pager-page:hover:not(.active) {
+    border-color: #005baa;
+    color: #005baa;
+}
+
+.table-pager-page.active {
+    background: #005baa;
+    border-color: #005baa;
+    color: #ffffff;
+}
+
+.table-pager-dots {
+    color: #6b7a8c;
+    font-weight: 700;
+}
+
+.table-pager-info {
+    color: #5c6b7a;
+    font-size: 0.85rem;
+}
+
+.table-pager-size {
+    padding: 6px 10px;
+    border: 1px solid #d6e0ea;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #12304a;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+/* ---------- Workflow stage progress ---------- */
+
+.workflow-stage {
+    font-weight: 600;
+    color: #12304a;
+    white-space: nowrap;
+}
+
+.workflow-stage.done {
+    color: #1e7d3c;
+}
+
+.workflow-stage.rejected {
+    color: #b3261e;
+}
+
+/* ---------- Request route panel ---------- */
+
+.route-box {
+    background: #f4f8fb;
+    border: 1px solid #d6e0ea;
+    border-left: 4px solid #005baa;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 18px;
+}
+
+.route-box strong {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+    color: #005baa;
+}
+
+.route-box p span {
+    font-weight: 600;
+}
+
+.route-box p {
+    margin: 2px 0;
+    font-size: 0.9rem;
+    color: #12304a;
+}
+
+.route-box .route-empty {
+    color: #5c6b7a;
+    font-style: italic;
 }

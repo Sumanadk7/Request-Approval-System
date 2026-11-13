@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import RequestDetail from "./RequestDetail";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All statuses" },
@@ -43,6 +46,8 @@ function Requests({ initialStatusFilter = "ALL" }) {
     statusFilter === "ALL"
       ? requests
       : requests.filter((request) => request.status === statusFilter);
+
+  const paged = usePagedList(filteredRequests, 10);
 
   const renderStatus = (status) => {
     return (
@@ -144,9 +149,9 @@ function Requests({ initialStatusFilter = "ALL" }) {
               </thead>
 
               <tbody>
-                {filteredRequests.map((request, index) => (
+                {paged.pageItems.map((request, index) => (
                   <tr key={request.id}>
-                    <td>{index + 1}</td>
+                    <td>{paged.absoluteIndex(index)}</td>
 
                     <td>{request.request_type_name}</td>
 
@@ -179,6 +184,14 @@ function Requests({ initialStatusFilter = "ALL" }) {
                 ))}
               </tbody>
             </table>
+
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
           </div>
         )}
       </div>

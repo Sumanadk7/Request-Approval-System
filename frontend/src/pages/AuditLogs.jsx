@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 
 const ACTION_TONES = {
   CREATED: "created",
@@ -163,8 +166,7 @@ function AuditLogs() {
     rangeFilter !== "ALL";
 
   const filteredLogs = logs.filter((log) => {
-    const query = search.trim().toLowerCase();
-    const searchable = [
+    const query = search.trim().toLowerCase();    const searchable = [
       log.action,
       log.user,
       log.user_name,
@@ -195,6 +197,8 @@ function AuditLogs() {
 
     return matchesSearch && matchesAction && matchesRange;
   });
+
+  const logPaged = usePagedList(filteredLogs, 10);
 
   const resetFilters = () => {
     setSearch("");
@@ -416,7 +420,7 @@ function AuditLogs() {
 
         {!loading && !error && filteredLogs.length > 0 && (
           <div className="audit-feed">
-            {filteredLogs.map((log) => {
+            {logPaged.pageItems.map((log) => {
               const tone = ACTION_TONES[log.action] || "default";
               const userName =
                 log.user_name || String(log.user || "System");
@@ -486,6 +490,14 @@ function AuditLogs() {
                 </article>
               );
             })}
+
+            <Pagination
+              page={logPaged.page}
+              pageCount={logPaged.pageCount}
+              total={logPaged.total}
+              setPage={logPaged.setPage}
+              setPageSize={logPaged.setPageSize}
+            />
           </div>
         )}
       </div>

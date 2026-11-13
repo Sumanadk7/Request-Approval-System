@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../services/api";
+import Pagination, {
+  usePagedList,
+} from "../components/Pagination";
 
 function extractErrorMessage(error, fallback) {
   const data = error.response?.data;
@@ -31,6 +34,8 @@ function Workflows() {
   const [workflows, setWorkflows] = useState([]);
   const [requestTypes, setRequestTypes] = useState([]);
   const [users, setUsers] = useState([]);
+
+  const workflowPaged = usePagedList(workflows, 10);
   const [assignmentsByWorkflow, setAssignmentsByWorkflow] =
     useState({});
 
@@ -770,9 +775,9 @@ function Workflows() {
               </thead>
 
               <tbody>
-                {workflows.map((workflow, index) => (
+                {workflowPaged.pageItems.map((workflow, index) => (
                   <tr key={workflow.id}>
-                    <td>{index + 1}</td>
+                    <td>{workflowPaged.absoluteIndex(index)}</td>
 
                     <td>{getRequestTypeName(workflow)}</td>
 
@@ -857,6 +862,14 @@ function Workflows() {
                 ))}
               </tbody>
             </table>
+
+            <Pagination
+              page={workflowPaged.page}
+              pageCount={workflowPaged.pageCount}
+              total={workflowPaged.total}
+              setPage={workflowPaged.setPage}
+              setPageSize={workflowPaged.setPageSize}
+            />
           </div>
         )}
       </div>
