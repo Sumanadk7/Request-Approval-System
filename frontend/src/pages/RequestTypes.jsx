@@ -243,6 +243,14 @@ function RequestTypes() {
           <p>No request types found.</p>
         ) : (
           <div className="table-wrapper">
+            <Pagination
+              page={paged.page}
+              pageCount={paged.pageCount}
+              total={paged.total}
+              setPage={paged.setPage}
+              setPageSize={paged.setPageSize}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -282,14 +290,6 @@ function RequestTypes() {
                 ))}
               </tbody>
             </table>
-
-            <Pagination
-              page={paged.page}
-              pageCount={paged.pageCount}
-              total={paged.total}
-              setPage={paged.setPage}
-              setPageSize={paged.setPageSize}
-            />
           </div>
         )}
       </div>

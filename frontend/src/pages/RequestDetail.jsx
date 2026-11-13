@@ -49,13 +49,23 @@ function RequestDetail({ requestId, onBack, onChanged }) {
   const verifiedUsernames = new Set(
     (detail?.verifier_actions || [])
       .filter((action) => action.action === "VERIFIED")
-      .map((action) => action.username),
+      .map((action) => action.username)
+      .concat(
+        (detail?.audit_logs || [])
+          .filter((log) => log.action === "VERIFIED" && log.user_name)
+          .map((log) => log.user_name),
+      ),
   );
 
   const approvedUsernames = new Set(
     (detail?.approver_actions || [])
       .filter((action) => action.action === "APPROVED")
-      .map((action) => action.username),
+      .map((action) => action.username)
+      .concat(
+        (detail?.audit_logs || [])
+          .filter((log) => log.action === "APPROVED" && log.user_name)
+          .map((log) => log.user_name),
+      ),
   );
 
   const rejectedUsernames = new Set(
@@ -736,7 +746,7 @@ function RequestDetail({ requestId, onBack, onChanged }) {
                       const state = routeNodeState(node);
 
                       const stateMeta = {
-                        done: { icon: "✓", label: "Passed" },
+                        done: { icon: "✓", label: "Completed" },
                         rejected: { icon: "✕", label: "Rejected" },
                         current: { icon: "▶", label: "Current step" },
                         waiting: { icon: "○", label: "Pending" },
@@ -1011,6 +1021,14 @@ function RequestDetail({ requestId, onBack, onChanged }) {
           <p>No activity recorded yet.</p>
         ) : (
           <div className="table-wrapper">
+            <Pagination
+              page={timelinePaged.page}
+              pageCount={timelinePaged.pageCount}
+              total={timelinePaged.total}
+              setPage={timelinePaged.setPage}
+              setPageSize={timelinePaged.setPageSize}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -1035,14 +1053,6 @@ function RequestDetail({ requestId, onBack, onChanged }) {
                 ))}
               </tbody>
             </table>
-
-            <Pagination
-              page={timelinePaged.page}
-              pageCount={timelinePaged.pageCount}
-              total={timelinePaged.total}
-              setPage={timelinePaged.setPage}
-              setPageSize={timelinePaged.setPageSize}
-            />
           </div>
         )}
       </div>

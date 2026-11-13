@@ -761,6 +761,14 @@ function Workflows() {
           <p>No workflows found.</p>
         ) : (
           <div className="table-wrapper">
+            <Pagination
+              page={workflowPaged.page}
+              pageCount={workflowPaged.pageCount}
+              total={workflowPaged.total}
+              setPage={workflowPaged.setPage}
+              setPageSize={workflowPaged.setPageSize}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -862,14 +870,6 @@ function Workflows() {
                 ))}
               </tbody>
             </table>
-
-            <Pagination
-              page={workflowPaged.page}
-              pageCount={workflowPaged.pageCount}
-              total={workflowPaged.total}
-              setPage={workflowPaged.setPage}
-              setPageSize={workflowPaged.setPageSize}
-            />
           </div>
         )}
       </div>

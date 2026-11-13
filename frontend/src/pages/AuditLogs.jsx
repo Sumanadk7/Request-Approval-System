@@ -420,6 +420,14 @@ function AuditLogs() {
 
         {!loading && !error && filteredLogs.length > 0 && (
           <div className="audit-feed">
+            <Pagination
+              page={logPaged.page}
+              pageCount={logPaged.pageCount}
+              total={logPaged.total}
+              setPage={logPaged.setPage}
+              setPageSize={logPaged.setPageSize}
+            />
+
             {logPaged.pageItems.map((log) => {
               const tone = ACTION_TONES[log.action] || "default";
               const userName =
@@ -490,14 +498,6 @@ function AuditLogs() {
                 </article>
               );
             })}
-
-            <Pagination
-              page={logPaged.page}
-              pageCount={logPaged.pageCount}
-              total={logPaged.total}
-              setPage={logPaged.setPage}
-              setPageSize={logPaged.setPageSize}
-            />
           </div>
         )}
       </div>

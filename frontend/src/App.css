@@ -3425,7 +3425,7 @@ button[class*="view"]:hover {
     align-items: center;
     flex-wrap: wrap;
     gap: 12px;
-    padding: 14px 4px 4px;
+    padding: 0 4px 14px;
 }
 
 .table-pager-pages {
