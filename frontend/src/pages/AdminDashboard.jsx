@@ -26,6 +26,7 @@ function AdminDashboard() {
     total_workflows: 0,
     total_requests: 0,
     pending_requests: 0,
+    decision_required_requests: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -101,6 +102,12 @@ function AdminDashboard() {
       label: "Pending Requests",
       value: stats.pending_requests,
       status: "PENDING",
+    },
+    {
+      key: "decision-required",
+      label: "Decision Required",
+      value: stats.decision_required_requests,
+      status: "DECISION_REQUIRED",
     },
   ];
 
