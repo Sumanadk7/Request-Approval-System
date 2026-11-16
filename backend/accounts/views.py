@@ -132,7 +132,10 @@ class AdminStatsView(APIView):
             "total_workflows": Workflow.objects.count(),
             "total_requests": Request.objects.count(),
             "pending_requests": Request.objects.filter(
-                status__in=["PENDING", "DECISION_REQUIRED"]
+                status="PENDING"
+            ).count(),
+            "decision_required_requests": Request.objects.filter(
+                status="DECISION_REQUIRED"
             ).count(),
         })
 
