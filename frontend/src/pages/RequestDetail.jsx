@@ -28,7 +28,6 @@ function RequestDetail({ requestId, onBack, onChanged }) {
   const username = localStorage.getItem("username");
   const role = localStorage.getItem("role");
   const isAdmin = role === "ADMIN";
-  const canViewFlowProgress = isAdmin || role === "APPROVER";
   const isOwner =
     (detail?.created_by || "") === (username || "");
 
@@ -843,9 +842,9 @@ function RequestDetail({ requestId, onBack, onChanged }) {
       )}
 
       {/* ================= FLOW PROGRESS ================= */}
-      {/* Visible to admins and approvers only */}
+      {/* Visible to admins only */}
 
-      {!isOwner && canViewFlowProgress && (
+      {isAdmin && (
       <div className="section">
         <div className="section-header">
           <h2>Approval Flow Progress</h2>

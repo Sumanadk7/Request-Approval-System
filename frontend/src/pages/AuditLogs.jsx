@@ -4,121 +4,23 @@ import Pagination, {
   usePagedList,
 } from "../components/Pagination";
 
-const ACTION_TONES = {
-  CREATED: "created",
-  UPDATED: "updated",
-  SUBMITTED: "submitted",
-  VERIFIED: "verified",
-  REJECTED: "rejected",
-  APPROVED: "approved",
-  REASSIGNED: "reassigned",
-};
+const ACTION_OPTIONS = [
+  { value: "ALL", label: "All actions" },
+  { value: "CREATED", label: "Created" },
+  { value: "UPDATED", label: "Updated" },
+  { value: "SUBMITTED", label: "Submitted" },
+  { value: "VERIFIED", label: "Verified" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "REASSIGNED", label: "Reassigned" },
+];
 
-const iconProps = {
-  width: 18,
-  height: 18,
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
-  strokeWidth: 2,
-  strokeLinecap: "round",
-  strokeLinejoin: "round",
-  "aria-hidden": true,
-};
-
-function ActionIcon({ action }) {
-  switch (action) {
-    case "CREATED":
-      return (
-        <svg {...iconProps}>
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      );
-    case "UPDATED":
-      return (
-        <svg {...iconProps}>
-          <path d="M12 20h9" />
-          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-        </svg>
-      );
-    case "SUBMITTED":
-      return (
-        <svg {...iconProps}>
-          <path d="M12 19V5" />
-          <path d="m5 12 7-7 7 7" />
-        </svg>
-      );
-    case "VERIFIED":
-      return (
-        <svg {...iconProps}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="m8.5 12 2.5 2.5 4.5-5" />
-        </svg>
-      );
-    case "APPROVED":
-      return (
-        <svg {...iconProps}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="m8 12 3 3 5-6" />
-        </svg>
-      );
-    case "REJECTED":
-      return (
-        <svg {...iconProps}>
-          <path d="M18 6 6 18M6 6l12 12" />
-        </svg>
-      );
-    case "REASSIGNED":
-      return (
-        <svg {...iconProps}>
-          <path d="M7 7h11" />
-          <path d="m14 4 3 3-3 3" />
-          <path d="M17 17H6" />
-          <path d="m10 14-3 3 3 3" />
-        </svg>
-      );
-    default:
-      return (
-        <svg {...iconProps}>
-          <circle cx="12" cy="12" r="4" />
-        </svg>
-      );
-  }
-}
-
-function StatIcon({ name }) {
-  switch (name) {
-    case "today":
-      return (
-        <svg {...iconProps}>
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" />
-        </svg>
-      );
-    case "users":
-      return (
-        <svg {...iconProps}>
-          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-        </svg>
-      );
-    case "latest":
-      return (
-        <svg {...iconProps}>
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 7v5l3 2" />
-        </svg>
-      );
-    default:
-      return (
-        <svg {...iconProps}>
-          <path d="M3 12h4l3 8 4-16 3 8h4" />
-        </svg>
-      );
-  }
-}
+const RANGE_OPTIONS = [
+  { value: "ALL", label: "All time" },
+  { value: "TODAY", label: "Today" },
+  { value: "7", label: "Last 7 days" },
+  { value: "30", label: "Last 30 days" },
+];
 
 function AuditLogs() {
   const [logs, setLogs] = useState([]);
@@ -157,16 +59,14 @@ function AuditLogs() {
     logs.map((log) => log.user_name || log.user).filter(Boolean),
   ).size;
   const latestLog = logs[0];
-  const actions = [
-    ...new Set(logs.map((log) => log.action).filter(Boolean)),
-  ].sort();
   const hasFilters =
     search.trim() !== "" ||
     actionFilter !== "ALL" ||
     rangeFilter !== "ALL";
 
   const filteredLogs = logs.filter((log) => {
-    const query = search.trim().toLowerCase();    const searchable = [
+    const query = search.trim().toLowerCase();
+    const searchable = [
       log.action,
       log.user,
       log.user_name,
@@ -210,10 +110,7 @@ function AuditLogs() {
     if (!date) {
       return "-";
     }
-    return new Date(date).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
+    return new Date(date).toLocaleString();
   };
 
   const formatRelative = (date) => {
@@ -245,181 +142,143 @@ function AuditLogs() {
       return `${days}d ago`;
     }
 
-    return new Date(date).toLocaleDateString(undefined, {
-      day: "numeric",
-      month: "short",
-    });
+    return new Date(date).toLocaleDateString();
+  };
+
+  const renderAction = (action) => {
+    return (
+      <span className={`status ${action?.toLowerCase()}`}>
+        {action}
+      </span>
+    );
   };
 
   return (
     <>
-      <div className="page-title audit-page-title">
-        <div>
-          <h1>Audit Logs</h1>
-          <p>Track every action across requests, workflows and users.</p>
-        </div>
+      <div className="page-title">
+        <h1>Audit Logs</h1>
 
-        <span className="audit-live-pill">
-          <span className="audit-live-dot" />
-          Activity feed
-        </span>
+        <p>Track every action across the system.</p>
       </div>
 
-      <div className="audit-stats">
-        <div className="audit-stat-card">
-          <span className="audit-stat-icon blue">
-            <StatIcon name="activity" />
-          </span>
-          <div>
-            <p>Total activity</p>
-            <h3>{loading ? "..." : logs.length}</h3>
-          </div>
+      <div className="dashboard-cards">
+        <div className="dashboard-card">
+          <h3>Total Activity</h3>
+          <h2>{loading ? "..." : logs.length}</h2>
         </div>
 
-        <div className="audit-stat-card">
-          <span className="audit-stat-icon green">
-            <StatIcon name="today" />
-          </span>
-          <div>
-            <p>Today's events</p>
-            <h3>{loading ? "..." : todayCount}</h3>
-          </div>
+        <div className="dashboard-card">
+          <h3>Today's Events</h3>
+          <h2>{loading ? "..." : todayCount}</h2>
         </div>
 
-        <div className="audit-stat-card">
-          <span className="audit-stat-icon gold">
-            <StatIcon name="users" />
-          </span>
-          <div>
-            <p>Active users</p>
-            <h3>{loading ? "..." : activeUsers}</h3>
-          </div>
+        <div className="dashboard-card">
+          <h3>Active Users</h3>
+          <h2>{loading ? "..." : activeUsers}</h2>
         </div>
 
-        <div className="audit-stat-card">
-          <span className="audit-stat-icon purple">
-            <StatIcon name="latest" />
-          </span>
-          <div>
-            <p>Latest activity</p>
-            <h3 className="audit-stat-time">
-              {loading
-                ? "..."
-                : latestLog
-                  ? formatRelative(latestLog.created_at)
-                  : "No activity"}
-            </h3>
-          </div>
+        <div className="dashboard-card">
+          <h3>Latest Activity</h3>
+          <h2>
+            {loading
+              ? "..."
+              : latestLog
+                ? formatRelative(latestLog.created_at)
+                : "No activity"}
+          </h2>
         </div>
       </div>
 
-      <div className="section audit-section">
-        <div className="audit-toolbar">
-          <div className="audit-search">
-            <svg {...iconProps}>
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
+      <div className="section">
+        <div className="section-header">
+          <h2>Audit Trail</h2>
+
+          <div className="request-filter">
+            <label htmlFor="audit-search">Search</label>
+
             <input
+              id="audit-search"
               type="text"
+              className="request-filter-input"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search action, user, request or message..."
-              aria-label="Search audit logs"
+              placeholder="Search action, user, request..."
             />
-          </div>
 
-          <div className="audit-filters">
+            <label htmlFor="audit-action-filter">Action</label>
+
             <select
-              className="audit-select"
+              id="audit-action-filter"
+              className="request-filter-select"
               value={actionFilter}
-              onChange={(event) => setActionFilter(event.target.value)}
-              aria-label="Filter by action"
+              onChange={(event) =>
+                setActionFilter(event.target.value)
+              }
             >
-              <option value="ALL">All actions</option>
-              {actions.map((action) => (
-                <option key={action} value={action}>
-                  {action}
+              {ACTION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
 
+            <label htmlFor="audit-range-filter">Period</label>
+
             <select
-              className="audit-select"
+              id="audit-range-filter"
+              className="request-filter-select"
               value={rangeFilter}
-              onChange={(event) => setRangeFilter(event.target.value)}
-              aria-label="Filter by date range"
+              onChange={(event) =>
+                setRangeFilter(event.target.value)
+              }
             >
-              <option value="ALL">All time</option>
-              <option value="TODAY">Today</option>
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
+              {RANGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
 
             {hasFilters && (
               <button
                 type="button"
-                className="btn btn-clear audit-reset"
+                className="btn btn-clear"
                 onClick={resetFilters}
               >
                 Reset
               </button>
             )}
+
+            <span className="request-filter-count">
+              {filteredLogs.length}{" "}
+              {filteredLogs.length === 1 ? "event" : "events"}
+            </span>
           </div>
         </div>
 
-        {!loading && !error && logs.length > 0 && (
-          <div className="audit-results-bar">
-            <span>
-              <strong>{filteredLogs.length}</strong>{" "}
-              {filteredLogs.length === 1 ? "event" : "events"}
-              {hasFilters ? ` of ${logs.length}` : ""}
-            </span>
-            <span>Newest first</span>
-          </div>
-        )}
+        {loading && <p>Loading audit logs...</p>}
 
-        {loading && (
-          <div className="audit-loading">
-            <span className="audit-spinner" />
-            <p>Loading audit trail...</p>
-          </div>
-        )}
-
-        {!loading && error && (
-          <div className="audit-error">{error}</div>
+        {error && (
+          <p
+            style={{
+              color: "#dc2626",
+              marginBottom: "15px",
+            }}
+          >
+            {error}
+          </p>
         )}
 
         {!loading && !error && filteredLogs.length === 0 && (
-          <div className="audit-empty">
-            <svg {...iconProps} width="34" height="34">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
-            <h3>
-              {logs.length === 0
-                ? "No activity yet"
-                : "No matching activity"}
-            </h3>
-            <p>
-              {logs.length === 0
-                ? "Actions across requests and workflows will appear here."
-                : "Try a different search term, action or date range."}
-            </p>
-            {hasFilters && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={resetFilters}
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+          <p>
+            {logs.length === 0
+              ? "No audit logs found."
+              : "No logs match the selected filter."}
+          </p>
         )}
 
         {!loading && !error && filteredLogs.length > 0 && (
-          <div className="audit-feed">
+          <div className="table-wrapper">
             <Pagination
               page={logPaged.page}
               pageCount={logPaged.pageCount}
@@ -428,76 +287,41 @@ function AuditLogs() {
               setPageSize={logPaged.setPageSize}
             />
 
-            {logPaged.pageItems.map((log) => {
-              const tone = ACTION_TONES[log.action] || "default";
-              const userName =
-                log.user_name || String(log.user || "System");
+            <table>
+              <thead>
+                <tr>
+                  <th>S.N</th>
+                  <th>Action</th>
+                  <th>User</th>
+                  <th>Request</th>
+                  <th>Request Type</th>
+                  <th>Details</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
 
-              return (
-                <article className="audit-item" key={log.id}>
-                  <span className={`audit-marker tone-${tone}`}>
-                    <ActionIcon action={log.action} />
-                  </span>
+              <tbody>
+                {logPaged.pageItems.map((log, index) => (
+                  <tr key={log.id}>
+                    <td>{logPaged.absoluteIndex(index)}</td>
 
-                  <div className="audit-card">
-                    <div className="audit-card-head">
-                      <div className="audit-card-tags">
-                        <span className={`audit-action-pill tone-${tone}`}>
-                          {log.action}
-                        </span>
+                    <td>{renderAction(log.action)}</td>
 
-                        {log.request_title ? (
-                          <span
-                            className="audit-request-chip"
-                            title={log.request_title}
-                          >
-                            {log.request_title}
-                          </span>
-                        ) : (
-                          <span className="audit-request-chip muted">
-                            System event
-                          </span>
-                        )}
-                      </div>
+                    <td>
+                      {log.user_name || log.user || "System"}
+                    </td>
 
-                      <time
-                        className="audit-time"
-                        dateTime={log.created_at}
-                        title={formatDate(log.created_at)}
-                      >
-                        <strong>{formatRelative(log.created_at)}</strong>
-                        <span>{formatDate(log.created_at)}</span>
-                      </time>
-                    </div>
+                    <td>{log.request_title || "—"}</td>
 
-                    <p className="audit-message">{log.message}</p>
+                    <td>{log.request_type_name || "—"}</td>
 
-                    <div className="audit-card-meta">
-                      <span className="audit-user">
-                        <span className="audit-avatar">
-                          {userName.charAt(0).toUpperCase()}
-                        </span>
-                        {userName}
-                      </span>
+                    <td>{log.message}</td>
 
-                      {log.request_type_name && (
-                        <span className="audit-context">
-                          {log.request_type_name}
-                        </span>
-                      )}
-
-                      {log.request_status && (
-                        <span
-                          className={`status ${log.request_status.toLowerCase()}`}
-                        >
-                          {log.request_status}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
+                    <td>{formatDate(log.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
